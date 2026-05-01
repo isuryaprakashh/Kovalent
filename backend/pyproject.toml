@@ -1,0 +1,18 @@
+[project]
+name = "kovalent-backend"
+version = "0.1.0"
+description = "FastAPI backend for Kovalent pod intelligence."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "pydantic==2.10.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
