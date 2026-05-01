@@ -1,64 +1,57 @@
+import asyncio
+from typing import Any
+
+import httpx
+
 from app.collectors.prometheus_collector import CollectorConfig, PrometheusTelemetryCollector
 
 
 class FakeLiveCollector(PrometheusTelemetryCollector):
-    def _get_json(self, url: str, params: dict[str, str]) -> dict:
-        query = params["query"]
-        if "container_cpu_usage_seconds_total" in query:
-            return self._vector("checkout-api-7d9f", 820)
-        if "resource=\"cpu\"" in query:
-            return self._vector("checkout-api-7d9f", 1000)
-        if "container_memory_working_set_bytes" in query:
-            return self._vector("checkout-api-7d9f", 512)
-        if "resource=\"memory\"" in query:
-            return self._vector("checkout-api-7d9f", 1024)
-        if "container_network_receive_bytes_total" in query:
-            return self._vector("checkout-api-7d9f", 120)
-        if "container_network_transmit_bytes_total" in query:
-            return self._vector("checkout-api-7d9f", 140)
-        if "kube_pod_container_status_restarts_total" in query:
-            return self._vector("checkout-api-7d9f", 2)
-        if "kube_pod_labels" in query:
-            return {
-                "status": "success",
-                "data": {
-                    "result": [
-                        {
-                            "metric": {
-                                "namespace": "payments",
-                                "pod": "checkout-api-7d9f",
-                                "label_app_kubernetes_io_name": "checkout-api",
-                            },
-                            "value": [0, "1"],
-                        }
-                    ]
-                },
-            }
-        if "kube_pod_spec_volumes_persistentvolumeclaims_info" in query:
-            return {
-                "status": "success",
-                "data": {
-                    "result": [
-                        {
-                            "metric": {
-                                "namespace": "payments",
-                                "pod": "checkout-api-7d9f",
-                                "persistentvolumeclaim": "checkout-data",
-                            },
-                            "value": [0, "1"],
-                        }
-                    ]
-                },
-            }
-        if "container_fs_io_time_seconds_total" in query:
-            return self._vector("checkout-api-7d9f", 130)
-        if "container_fs_reads_total" in query:
-            return self._vector("checkout-api-7d9f", 60)
-        if "loki" in url:
-            return self._vector("checkout-api-7d9f", 12)
-        return {"status": "success", "data": {"result": []}}
+    async def _prometheus_vector(
+        self,
+        client: httpx.AsyncClient,
+        name: str,
+        query: str,
+        required: bool = True,
+    ) -> dict[tuple[str, str], float]:
+        values = {
+            "cpu_usage": 820,
+            "cpu_limits": 1000,
+            "memory_usage": 512,
+            "memory_limits": 1024,
+            "network_rx": 120,
+            "network_tx": 140,
+            "restarts": 2,
+            "pvc_latency": 130,
+            "pvc_iops": 60,
+        }
+        value = values.get(name)
+        if value is None:
+            return {}
+        return {("payments", "checkout-api-7d9f"): value}
 
-    def _vector(self, pod: str, value: float) -> dict:
+    async def _prometheus_labels(
+        self,
+        client: httpx.AsyncClient,
+        required: bool,
+    ) -> dict[tuple[str, str], str]:
+        return {("payments", "checkout-api-7d9f"): "checkout-api"}
+
+    async def _pvc_claims(
+        self,
+        client: httpx.AsyncClient,
+        required: bool,
+    ) -> dict[tuple[str, str], str]:
+        return {("payments", "checkout-api-7d9f"): "checkout-data"}
+
+    async def _loki_error_rates(
+        self,
+        client: httpx.AsyncClient,
+        required: bool,
+    ) -> dict[tuple[str, str], float]:
+        return {("payments", "checkout-api-7d9f"): 12}
+
+    def _vector(self, pod: str, value: float) -> dict[str, Any]:
         return {
             "status": "success",
             "data": {
@@ -80,7 +73,7 @@ def test_live_collector_maps_prometheus_and_loki_payloads() -> None:
         )
     )
 
-    metrics = collector.collect()
+    metrics = asyncio.run(collector.collect())
 
     assert len(metrics) == 1
     metric = metrics[0]
@@ -93,4 +86,3 @@ def test_live_collector_maps_prometheus_and_loki_payloads() -> None:
     assert metric.pvc_latency_ms == 130
     assert metric.error_rate_per_minute == 12
     assert metric.restart_count == 2
-

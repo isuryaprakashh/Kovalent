@@ -1,28 +1,27 @@
-from __future__ import annotations
-
+import random
 from datetime import datetime, timezone
 
 from app.models import PodMetric
 
 
 class MockTelemetryCollector:
-    """Provides deterministic sample telemetry for local demos and tests."""
+    """Provides dynamic sample telemetry for local demos and tests."""
 
-    def collect(self) -> list[PodMetric]:
+    async def collect(self) -> list[PodMetric]:
         now = datetime.now(timezone.utc)
         return [
             PodMetric(
                 namespace="payments",
                 pod="checkout-api-7d9f",
                 service="checkout-api",
-                cpu_millicores=820,
+                cpu_millicores=820 + random.uniform(-50, 50),
                 cpu_limit_millicores=1000,
-                memory_mb=610,
+                memory_mb=610 + random.uniform(-10, 10),
                 memory_limit_mb=1024,
-                network_rx_kbps=920,
-                network_tx_kbps=1340,
+                network_rx_kbps=920 + random.uniform(-100, 100),
+                network_tx_kbps=1340 + random.uniform(-100, 100),
                 pvc_name=None,
-                error_rate_per_minute=4,
+                error_rate_per_minute=max(0, 4 + random.randint(-1, 2)),
                 restart_count=0,
                 observed_at=now,
             ),
@@ -30,16 +29,16 @@ class MockTelemetryCollector:
                 namespace="payments",
                 pod="orders-db-0",
                 service="orders-db",
-                cpu_millicores=710,
+                cpu_millicores=710 + random.uniform(-30, 30),
                 cpu_limit_millicores=1500,
-                memory_mb=1840,
+                memory_mb=1840 + random.uniform(-5, 5),
                 memory_limit_mb=2048,
-                network_rx_kbps=560,
-                network_tx_kbps=460,
+                network_rx_kbps=560 + random.uniform(-50, 50),
+                network_tx_kbps=460 + random.uniform(-50, 50),
                 pvc_name="orders-data",
-                pvc_latency_ms=165,
-                pvc_iops=920,
-                error_rate_per_minute=1,
+                pvc_latency_ms=165 + random.uniform(-20, 20),
+                pvc_iops=920 + random.uniform(-100, 100),
+                error_rate_per_minute=max(0, 1 + random.randint(-1, 1)),
                 restart_count=0,
                 observed_at=now,
             ),
@@ -47,14 +46,14 @@ class MockTelemetryCollector:
                 namespace="payments",
                 pod="frontend-5c6b",
                 service="frontend",
-                cpu_millicores=210,
+                cpu_millicores=210 + random.uniform(-20, 20),
                 cpu_limit_millicores=500,
-                memory_mb=212,
+                memory_mb=212 + random.uniform(-10, 10),
                 memory_limit_mb=512,
-                network_rx_kbps=1480,
-                network_tx_kbps=730,
+                network_rx_kbps=1480 + random.uniform(-200, 200),
+                network_tx_kbps=730 + random.uniform(-100, 100),
                 pvc_name=None,
-                error_rate_per_minute=18,
+                error_rate_per_minute=max(0, 18 + random.randint(-5, 5)),
                 restart_count=1,
                 observed_at=now,
             ),
@@ -62,12 +61,12 @@ class MockTelemetryCollector:
                 namespace="platform",
                 pod="auth-api-86b4",
                 service="auth-api",
-                cpu_millicores=180,
+                cpu_millicores=180 + random.uniform(-10, 10),
                 cpu_limit_millicores=750,
-                memory_mb=320,
+                memory_mb=320 + random.uniform(-5, 5),
                 memory_limit_mb=768,
-                network_rx_kbps=330,
-                network_tx_kbps=290,
+                network_rx_kbps=330 + random.uniform(-30, 30),
+                network_tx_kbps=290 + random.uniform(-30, 30),
                 pvc_name=None,
                 error_rate_per_minute=0,
                 restart_count=0,

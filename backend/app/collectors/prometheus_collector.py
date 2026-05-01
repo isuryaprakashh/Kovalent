@@ -1,13 +1,9 @@
-from __future__ import annotations
-
-import json
+import asyncio
+import httpx
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 from app.models import PodMetric
 
@@ -26,61 +22,41 @@ class CollectorConfig:
 
 
 class PrometheusTelemetryCollector:
-    """Collects live pod metrics from Prometheus and log error rates from Loki."""
+    """Collects live pod metrics from Prometheus and log error rates from Loki asynchronously."""
 
     def __init__(self, config: CollectorConfig) -> None:
         self.config = config
         self.prometheus_url = config.prometheus_url.rstrip("/")
         self.loki_url = config.loki_url.rstrip("/") if config.loki_url else None
 
-    def collect(self) -> list[PodMetric]:
-        try:
-            cpu_usage = self._prometheus_vector(
-                "cpu_usage",
-                f'sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])) * 1000',
-            )
-            cpu_limits = self._prometheus_vector(
-                "cpu_limits",
-                f'sum by (namespace, pod) (kube_pod_container_resource_limits{{namespace=~"{self.config.namespace_regex}",resource="cpu",unit="core"}}) * 1000',
-            )
-            cpu_requests = self._prometheus_vector(
-                "cpu_requests",
-                f'sum by (namespace, pod) (kube_pod_container_resource_requests{{namespace=~"{self.config.namespace_regex}",resource="cpu",unit="core"}}) * 1000',
-                required=False,
-            )
-            memory_usage = self._prometheus_vector(
-                "memory_usage",
-                f'sum by (namespace, pod) (container_memory_working_set_bytes{{namespace=~"{self.config.namespace_regex}",pod!=""}}) / 1024 / 1024',
-            )
-            memory_limits = self._prometheus_vector(
-                "memory_limits",
-                f'sum by (namespace, pod) (kube_pod_container_resource_limits{{namespace=~"{self.config.namespace_regex}",resource="memory",unit="byte"}}) / 1024 / 1024',
-            )
-            memory_requests = self._prometheus_vector(
-                "memory_requests",
-                f'sum by (namespace, pod) (kube_pod_container_resource_requests{{namespace=~"{self.config.namespace_regex}",resource="memory",unit="byte"}}) / 1024 / 1024',
-                required=False,
-            )
-            network_rx = self._prometheus_vector(
-                "network_rx",
-                f'sum by (namespace, pod) (rate(container_network_receive_bytes_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])) / 1024',
-            )
-            network_tx = self._prometheus_vector(
-                "network_tx",
-                f'sum by (namespace, pod) (rate(container_network_transmit_bytes_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])) / 1024',
-            )
-            restarts = self._prometheus_vector(
-                "restarts",
-                f'sum by (namespace, pod) (kube_pod_container_status_restarts_total{{namespace=~"{self.config.namespace_regex}"}})',
-                required=False,
-            )
-            pod_labels = self._prometheus_labels(required=False)
-            pvc_by_pod = self._pvc_claims(required=False)
-            pvc_latency = self._pvc_latency(required=False)
-            pvc_iops = self._pvc_iops(required=False)
-            error_rates = self._loki_error_rates(required=False)
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
-            raise TelemetryCollectionError(f"Unable to collect live telemetry: {exc}") from exc
+    async def collect(self) -> list[PodMetric]:
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            try:
+                # Fire all queries in parallel
+                tasks = [
+                    self._prometheus_vector(client, "cpu_usage", f'sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])) * 1000'),
+                    self._prometheus_vector(client, "cpu_limits", f'sum by (namespace, pod) (kube_pod_container_resource_limits{{namespace=~"{self.config.namespace_regex}",resource="cpu",unit="core"}}) * 1000'),
+                    self._prometheus_vector(client, "cpu_requests", f'sum by (namespace, pod) (kube_pod_container_resource_requests{{namespace=~"{self.config.namespace_regex}",resource="cpu",unit="core"}}) * 1000', required=False),
+                    self._prometheus_vector(client, "memory_usage", f'sum by (namespace, pod) (container_memory_working_set_bytes{{namespace=~"{self.config.namespace_regex}",pod!=""}}) / 1024 / 1024'),
+                    self._prometheus_vector(client, "memory_limits", f'sum by (namespace, pod) (kube_pod_container_resource_limits{{namespace=~"{self.config.namespace_regex}",resource="memory",unit="byte"}}) / 1024 / 1024'),
+                    self._prometheus_vector(client, "memory_requests", f'sum by (namespace, pod) (kube_pod_container_resource_requests{{namespace=~"{self.config.namespace_regex}",resource="memory",unit="byte"}}) / 1024 / 1024', required=False),
+                    self._prometheus_vector(client, "network_rx", f'sum by (namespace, pod) (rate(container_network_receive_bytes_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])) / 1024'),
+                    self._prometheus_vector(client, "network_tx", f'sum by (namespace, pod) (rate(container_network_transmit_bytes_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])) / 1024'),
+                    self._prometheus_vector(client, "restarts", f'sum by (namespace, pod) (kube_pod_container_status_restarts_total{{namespace=~"{self.config.namespace_regex}"}})', required=False),
+                    self._prometheus_labels(client, required=False),
+                    self._pvc_claims(client, required=False),
+                    self._pvc_latency(client, required=False),
+                    self._pvc_iops(client, required=False),
+                    self._loki_error_rates(client, required=False),
+                ]
+
+                results = await asyncio.gather(*tasks)
+
+                (cpu_usage, cpu_limits, cpu_requests, memory_usage, memory_limits, memory_requests,
+                 network_rx, network_tx, restarts, pod_labels, pvc_by_pod, pvc_latency, pvc_iops, error_rates) = results
+
+            except (httpx.HTTPError, asyncio.TimeoutError, ValueError) as exc:
+                raise TelemetryCollectionError(f"Unable to collect live telemetry: {exc}") from exc
 
         observed_at = datetime.now(timezone.utc)
         keys = set(cpu_usage) | set(memory_usage) | set(network_rx) | set(network_tx)
@@ -113,53 +89,47 @@ class PrometheusTelemetryCollector:
             raise TelemetryCollectionError("Prometheus returned no pod metrics for the configured namespace selector.")
         return metrics
 
-    def _prometheus_vector(self, name: str, query: str, required: bool = True) -> dict[tuple[str, str], float]:
+    async def _prometheus_vector(self, client: httpx.AsyncClient, name: str, query: str, required: bool = True) -> dict[tuple[str, str], float]:
         try:
-            payload = self._get_json(f"{self.prometheus_url}/api/v1/query", {"query": query})
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError):
-            if required:
-                raise
+            response = await client.get(f"{self.prometheus_url}/api/v1/query", params={"query": query})
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            if required: raise
             return {}
+
         if payload.get("status") != "success":
-            if required:
-                raise TelemetryCollectionError(f"Prometheus query failed for {name}: {payload}")
+            if required: raise TelemetryCollectionError(f"Prometheus query failed for {name}: {payload}")
             return {}
         return self._vector_to_pod_map(payload.get("data", {}).get("result", []))
 
-    def _prometheus_labels(self, required: bool) -> dict[tuple[str, str], str]:
-        query = (
-            f'kube_pod_labels{{namespace=~"{self.config.namespace_regex}",pod!=""}}'
-        )
+    async def _prometheus_labels(self, client: httpx.AsyncClient, required: bool) -> dict[tuple[str, str], str]:
+        query = f'kube_pod_labels{{namespace=~"{self.config.namespace_regex}",pod!=""}}'
         try:
-            payload = self._get_json(f"{self.prometheus_url}/api/v1/query", {"query": query})
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError):
-            if required:
-                raise
+            response = await client.get(f"{self.prometheus_url}/api/v1/query", params={"query": query})
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            if required: raise
             return {}
 
         labels: dict[tuple[str, str], str] = {}
         for item in payload.get("data", {}).get("result", []):
             metric = item.get("metric", {})
             key = self._pod_key(metric)
-            if key is None:
-                continue
-            service = (
-                metric.get("label_app_kubernetes_io_name")
-                or metric.get("label_app")
-                or metric.get("label_k8s_app")
-                or metric.get("label_component")
-            )
-            if service:
-                labels[key] = service
+            if key is None: continue
+            service = metric.get("label_app_kubernetes_io_name") or metric.get("label_app") or metric.get("label_k8s_app") or metric.get("label_component")
+            if service: labels[key] = service
         return labels
 
-    def _pvc_claims(self, required: bool) -> dict[tuple[str, str], str]:
+    async def _pvc_claims(self, client: httpx.AsyncClient, required: bool) -> dict[tuple[str, str], str]:
         query = f'kube_pod_spec_volumes_persistentvolumeclaims_info{{namespace=~"{self.config.namespace_regex}",pod!=""}}'
         try:
-            payload = self._get_json(f"{self.prometheus_url}/api/v1/query", {"query": query})
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError):
-            if required:
-                raise
+            response = await client.get(f"{self.prometheus_url}/api/v1/query", params={"query": query})
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            if required: raise
             return {}
 
         claims: dict[tuple[str, str], str] = {}
@@ -167,48 +137,39 @@ class PrometheusTelemetryCollector:
             metric = item.get("metric", {})
             key = self._pod_key(metric)
             claim = metric.get("persistentvolumeclaim")
-            if key and claim:
-                claims[key] = claim
+            if key and claim: claims[key] = claim
         return claims
 
-    def _pvc_latency(self, required: bool) -> dict[tuple[str, str], float]:
+    async def _pvc_latency(self, client: httpx.AsyncClient, required: bool) -> dict[tuple[str, str], float]:
         query = (
             f'(sum by (namespace, pod) (rate(container_fs_io_time_seconds_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])) '
             f'/ clamp_min(sum by (namespace, pod) (rate(container_fs_reads_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}]) '
             f'+ rate(container_fs_writes_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}])), 1)) * 1000'
         )
-        return self._prometheus_vector("pvc_latency", query, required=required)
+        return await self._prometheus_vector(client, "pvc_latency", query, required=required)
 
-    def _pvc_iops(self, required: bool) -> dict[tuple[str, str], float]:
+    async def _pvc_iops(self, client: httpx.AsyncClient, required: bool) -> dict[tuple[str, str], float]:
         query = (
             f'sum by (namespace, pod) (rate(container_fs_reads_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}]) '
             f'+ rate(container_fs_writes_total{{namespace=~"{self.config.namespace_regex}",pod!=""}}[{self.config.query_window}]))'
         )
-        return self._prometheus_vector("pvc_iops", query, required=required)
+        return await self._prometheus_vector(client, "pvc_iops", query, required=required)
 
-    def _loki_error_rates(self, required: bool) -> dict[tuple[str, str], float]:
-        if not self.loki_url:
-            return {}
+    async def _loki_error_rates(self, client: httpx.AsyncClient, required: bool) -> dict[tuple[str, str], float]:
+        if not self.loki_url: return {}
         query = (
             f'sum by (namespace, pod) (count_over_time({{namespace=~"{self.config.namespace_regex}",pod=~".+"}} '
             f'|~ "(?i)(error|exception|panic|failed| 5[0-9]{{2}} )" [{self.config.query_window}]))'
         )
         try:
-            payload = self._get_json(f"{self.loki_url}/loki/api/v1/query", {"query": query})
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError):
-            if required:
-                raise
+            response = await client.get(f"{self.loki_url}/loki/api/v1/query", params={"query": query})
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            if required: raise
             return {}
-        if payload.get("status") != "success":
-            return {}
+        if payload.get("status") != "success": return {}
         return self._vector_to_pod_map(payload.get("data", {}).get("result", []))
-
-    def _get_json(self, url: str, params: dict[str, str]) -> dict[str, Any]:
-        request_url = f"{url}?{urlencode(params)}"
-        request = Request(request_url, headers={"Accept": "application/json"})
-        with urlopen(request, timeout=self.config.timeout_seconds) as response:
-            raw = response.read().decode("utf-8")
-        return json.loads(raw)
 
     def _vector_to_pod_map(self, result: list[dict[str, Any]]) -> dict[tuple[str, str], float]:
         values: dict[tuple[str, str], float] = {}

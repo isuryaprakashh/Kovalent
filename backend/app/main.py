@@ -26,8 +26,9 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/snapshot")
-def snapshot() -> dict:
-    return service.build_snapshot().model_dump()
+async def snapshot() -> dict:
+    snapshot_data = await service.build_snapshot()
+    return snapshot_data.model_dump()
 
 
 @app.get("/api/status")
@@ -43,12 +44,12 @@ def api_status() -> dict:
 
 
 @app.get("/api/insights")
-def insights() -> dict:
-    snapshot_data = service.build_snapshot()
+async def insights() -> dict:
+    snapshot_data = await service.build_snapshot()
     return {"insights": [insight.model_dump() for insight in snapshot_data.insights]}
 
 
 @app.get("/api/topology")
-def topology() -> dict:
-    snapshot_data = service.build_snapshot()
+async def topology() -> dict:
+    snapshot_data = await service.build_snapshot()
     return snapshot_data.topology.model_dump()

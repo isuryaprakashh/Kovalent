@@ -31,8 +31,8 @@ class InsightService:
         self.engine = MasterCorrelationEngine()
         self.engine.dependency_map = self._dependency_map()
 
-    def build_snapshot(self) -> ClusterSnapshot:
-        metrics, source = self._collect_metrics()
+    async def build_snapshot(self) -> ClusterSnapshot:
+        metrics, source = await self._collect_metrics()
         findings = self._run_agents(metrics)
         insights = self.engine.correlate(findings)
         return ClusterSnapshot(
@@ -44,15 +44,15 @@ class InsightService:
             topology=self._build_topology(metrics, findings),
         )
 
-    def _collect_metrics(self) -> tuple[list[PodMetric], str]:
+    async def _collect_metrics(self) -> tuple[list[PodMetric], str]:
         if self.settings.mode == "live":
             try:
-                return self.live_collector.collect(), "live"
+                return await self.live_collector.collect(), "live"
             except TelemetryCollectionError:
                 if not self.settings.live_fallback_enabled:
                     raise
-                return self.demo_collector.collect(), "live-fallback"
-        return self.demo_collector.collect(), "demo"
+                return await self.demo_collector.collect(), "live-fallback"
+        return await self.demo_collector.collect(), "demo"
 
     def _run_agents(self, metrics: list[PodMetric]) -> list[AgentFinding]:
         findings: list[AgentFinding] = []
