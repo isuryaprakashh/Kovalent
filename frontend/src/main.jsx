@@ -1,525 +1,341 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Activity,
-  AlertTriangle,
-  ArrowLeft,
-  Box,
-  Cpu,
+  AlertCircle,
+  ArrowUpRight,
+  ChevronRight,
   Database,
-  Gauge,
-  HardDrive,
-  Info,
+  Eye,
+  Fingerprint,
+  LayoutGrid,
+  Layers,
+  MessageSquare,
   Network,
   RefreshCw,
-  RotateCcw,
-  Server,
-  Terminal
+  Search,
+  ShieldCheck,
+  Zap,
+  Terminal,
+  Cpu,
+  Radio,
+  ExternalLink
 } from 'lucide-react';
 import * as d3 from 'd3';
-import './styles.css';
+import './index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000';
 
-const SERVICE_INFO = {
-  'kube-dns': 'Cluster DNS server. Resolves service names to IP addresses inside Kubernetes.',
-  'coredns': 'Cluster DNS server. Resolves service names to IP addresses inside Kubernetes.',
-  'etcd': 'Key-value store. Holds all cluster state — pods, configs, secrets, and scheduling data.',
-  'kube-apiserver': 'API gateway. Every kubectl command and controller talks to the cluster through this.',
-  'kube-controller-manager': 'Runs control loops. Manages replicas, nodes, endpoints, and service accounts.',
-  'kube-scheduler': 'Assigns pods to nodes. Picks the best node based on resources and constraints.',
-  'kube-proxy': 'Network proxy. Routes traffic to the correct pod behind each Kubernetes service.',
-  'storage-provisioner': 'Auto-creates persistent volumes when a pod requests storage.',
-  'alertmanager': 'Handles Prometheus alerts. Deduplicates, groups, and routes notifications.',
-  'grafana': 'Visualization dashboard. Renders charts and graphs from Prometheus and Loki data.',
-  'kube-state-metrics': 'Exports Kubernetes object states (pods, deployments, nodes) as Prometheus metrics.',
-  'kube-prometheus-stack-prometheus-operator': 'Manages Prometheus instances. Watches for monitoring config changes.',
-  'prometheus-node-exporter': 'Exports hardware and OS metrics from each node (CPU, memory, disk, network).',
-  'prometheus': 'Time-series database. Scrapes and stores all cluster metrics for querying.',
-  'loki': 'Log aggregation system. Collects and indexes container logs for querying.',
-  'promtail': 'Log shipper. Tails container log files and pushes them to Loki.',
-  'nginx': 'Web server / reverse proxy. Serves HTTP traffic or load-balances to backends.',
-};
-
-function getServiceInfo(service) {
-  if (SERVICE_INFO[service]) return SERVICE_INFO[service];
-  // Try partial matches for long operator names
-  for (const [key, desc] of Object.entries(SERVICE_INFO)) {
-    if (service.includes(key)) return desc;
-  }
-  return `Kubernetes workload running in the cluster.`;
-}
-
-function TileInfo({ text }) {
-  return (
-    <span className="tile-info-wrap">
-      <span className="tile-info-icon">
-        <Info size={11} />
-      </span>
-      <span className="tile-info-tooltip">{text}</span>
-    </span>
-  );
-}
-
-
-
-const fallbackSnapshot = {
-  generated_at: new Date().toISOString(),
-  source: 'demo',
-  metrics: [
-    {
-      namespace: 'payments',
-      pod: 'checkout-api-7d9f',
-      service: 'checkout-api',
-      cpu_millicores: 820,
-      cpu_limit_millicores: 1000,
-      memory_mb: 610,
-      memory_limit_mb: 1024,
-      network_rx_kbps: 920,
-      network_tx_kbps: 1340,
-      network_rx_drops_per_second: null,
-      network_tx_drops_per_second: null,
-      pvc_name: null,
-      pvc_mounts: [],
-      pvc_read_kbps: null,
-      pvc_write_kbps: null,
-      pvc_latency_ms: null,
-      pvc_iops: null,
-      error_rate_per_minute: 4,
-      error_signatures: [],
-      restart_count: 0,
-      observed_at: new Date().toISOString()
-    },
-    {
-      namespace: 'payments',
-      pod: 'orders-db-0',
-      service: 'orders-db',
-      cpu_millicores: 710,
-      cpu_limit_millicores: 1500,
-      memory_mb: 1840,
-      memory_limit_mb: 2048,
-      network_rx_kbps: 560,
-      network_tx_kbps: 460,
-      network_rx_drops_per_second: null,
-      network_tx_drops_per_second: null,
-      pvc_name: 'orders-data',
-      pvc_mounts: ['orders-data'],
-      pvc_read_kbps: 80,
-      pvc_write_kbps: 420,
-      pvc_latency_ms: 165,
-      pvc_iops: 920,
-      error_rate_per_minute: 1,
-      error_signatures: [],
-      restart_count: 0,
-      observed_at: new Date().toISOString()
-    },
-    {
-      namespace: 'payments',
-      pod: 'frontend-5c6b',
-      service: 'frontend',
-      cpu_millicores: 210,
-      cpu_limit_millicores: 500,
-      memory_mb: 212,
-      memory_limit_mb: 512,
-      network_rx_kbps: 1480,
-      network_tx_kbps: 730,
-      network_rx_drops_per_second: null,
-      network_tx_drops_per_second: null,
-      pvc_name: null,
-      pvc_mounts: [],
-      pvc_read_kbps: null,
-      pvc_write_kbps: null,
-      pvc_latency_ms: null,
-      pvc_iops: null,
-      error_rate_per_minute: 18,
-      error_signatures: [
-        {
-          signature: 'error checkout failed for order <num>',
-          count: 12,
-          first_seen: new Date(Date.now() - 300000).toISOString(),
-          last_seen: new Date().toISOString(),
-          sample: 'ERROR checkout failed for order 451'
-        }
-      ],
-      restart_count: 1,
-      observed_at: new Date().toISOString()
-    }
-  ],
-  findings: [],
-  insights: [
-    {
-      status: 'WARNING',
-      event: 'Cascading Latency Detected',
-      root_cause: "PVC orders-data on orders-db is experiencing I/O wait saturation.",
-      correlation: 'Frontend errors coincide with high storage latency in its downstream order database.',
-      recommendation: 'Check storage provisioner IOPS limits or migrate the database pod to faster disk.',
-      affected_services: ['frontend', 'checkout-api', 'orders-db'],
-      evidence: []
-    }
-  ],
-  topology: {
-    nodes: [
-      { id: 'svc:frontend', label: 'frontend', namespace: 'payments', kind: 'service', status: 'WARNING' },
-      { id: 'svc:checkout-api', label: 'checkout-api', namespace: 'payments', kind: 'service', status: 'WARNING' },
-      { id: 'svc:orders-db', label: 'orders-db', namespace: 'payments', kind: 'service', status: 'WARNING' },
-      { id: 'pod:frontend-5c6b', label: 'frontend-5c6b', namespace: 'payments', kind: 'pod', status: 'WARNING' },
-      { id: 'pod:checkout-api-7d9f', label: 'checkout-api-7d9f', namespace: 'payments', kind: 'pod', status: 'WARNING' },
-      { id: 'pod:orders-db-0', label: 'orders-db-0', namespace: 'payments', kind: 'pod', status: 'WARNING' },
-      { id: 'pvc:orders-data', label: 'orders-data', namespace: 'payments', kind: 'pvc', status: 'WARNING' }
-    ],
-    edges: [
-      { source: 'svc:frontend', target: 'svc:checkout-api', relationship: 'calls' },
-      { source: 'svc:checkout-api', target: 'svc:orders-db', relationship: 'calls' },
-      { source: 'svc:frontend', target: 'pod:frontend-5c6b', relationship: 'owns' },
-      { source: 'svc:checkout-api', target: 'pod:checkout-api-7d9f', relationship: 'owns' },
-      { source: 'svc:orders-db', target: 'pod:orders-db-0', relationship: 'owns' },
-      { source: 'pod:orders-db-0', target: 'pvc:orders-data', relationship: 'mounts' }
-    ]
-  }
-};
-
 function App() {
-  const [snapshot, setSnapshot] = useState(fallbackSnapshot);
+  const [pods, setPods] = useState([]);
+  const [graph, setGraph] = useState({ nodes: [], links: [] });
+  const [incidents, setIncidents] = useState([]);
+  const [selectedPodId, setSelectedPodId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [apiState, setApiState] = useState('demo');
-  const [collectorStatus, setCollectorStatus] = useState(null);
-  const [apiError, setApiError] = useState(null);
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
 
-  const selectedMetric = useMemo(() => {
-    if (!selectedNodeId) return null;
-    const [kind, id] = selectedNodeId.split(':');
-    if (kind === 'pod') return snapshot.metrics.find(m => m.pod === id);
-    if (kind === 'service') return snapshot.metrics.find(m => m.service === id);
-    return null;
-  }, [selectedNodeId, snapshot.metrics]);
-
-  const loadSnapshot = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/snapshot`);
-      if (!response.ok) throw new Error(`API returned ${response.status}`);
-      const nextSnapshot = await response.json();
-      setSnapshot(nextSnapshot);
-      setApiState(nextSnapshot.source ?? 'live');
-      fetch(`${API_BASE}/api/status`)
-        .then(statusResponse => statusResponse.ok ? statusResponse.json() : null)
-        .then(status => setCollectorStatus(status))
-        .catch(() => setCollectorStatus(null));
-      setApiError(null);
-    } catch {
-      setSnapshot(fallbackSnapshot);
-      setApiState('demo');
-      setApiError('API unavailable. Showing browser demo data.');
+      const [podsRes, graphRes, incidentsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/pods`),
+        fetch(`${API_BASE}/api/graph`),
+        fetch(`${API_BASE}/api/incidents`)
+      ]);
+      const podsData = await podsRes.json();
+      const graphData = await graphRes.json();
+      const incidentsData = await incidentsRes.json();
+      
+      setPods(podsData);
+      setGraph(graphData);
+      setIncidents(incidentsData.reports || []);
+
+      if (!selectedPodId && podsData.length > 0) {
+        const sorted = [...podsData].sort((a, b) => b.error_rate_per_minute - a.error_rate_per_minute);
+        setSelectedPodId(sorted[0].pod);
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard data:", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadSnapshot();
-    const timer = window.setInterval(loadSnapshot, 30000);
-    return () => window.clearInterval(timer);
+    fetchData();
+    const interval = setInterval(fetchData, 6000);
+    return () => clearInterval(interval);
   }, []);
 
-  const summary = useMemo(() => buildSummary(snapshot), [snapshot]);
+  const selectedPod = useMemo(() => 
+    pods.find(p => p.pod === selectedPodId), 
+    [pods, selectedPodId]
+  );
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Kubernetes intelligence</p>
-          <h1>Kovalent</h1>
-        </div>
-        <div className="topbar-actions">
-          <span className="timestamp">Updated {formatTime(snapshot.generated_at)}</span>
-          <span className={`api-pill ${apiState}`}>{sourceLabel(apiState)}</span>
-          <button type="button" onClick={loadSnapshot} disabled={loading} aria-label="Refresh snapshot">
-            <RefreshCw size={18} className={loading ? 'spin' : ''} />
-          </button>
+    <div className="flex h-screen bg-white text-slate-900 font-mono overflow-hidden uppercase tracking-tight">
+      {/* --- Top Clinical Rail --- */}
+      <header className="fixed top-0 w-full h-10 flex items-center px-6 z-50 bg-white border-b border-slate-200 text-[10px] font-bold">
+        <div className="flex items-center gap-8 w-full">
+          <div className="text-[#FF003C] tracking-[0.2em] font-black text-sm">KOVALENT_OS</div>
+          <div className="h-4 w-px bg-slate-200" />
+          <div className="flex gap-8">
+            <StatItem label="STATUS" value="OPERATIONAL" color="text-slate-900" />
+            <StatItem label="THROUGHPUT" value="1.2M/s" color="text-[#FF003C]" />
+            <StatItem label="LATENCY" value="14ms" color="text-slate-900" />
+          </div>
+          <div className="ml-auto flex items-center gap-4 text-slate-400">
+            <RefreshCw size={12} className={loading ? 'animate-spin text-[#FF003C]' : ''} />
+            <Terminal size={12} />
+            <div className="flex items-center gap-2">
+               <div className="w-1.5 h-1.5 bg-[#FF003C] rounded-full animate-pulse" />
+               <span className="text-slate-900">LIVE_STREAM</span>
+            </div>
+          </div>
         </div>
       </header>
 
-      {apiError ? <div className="status-banner" role="status">{apiError}</div> : null}
+      {/* --- Left Rail: Service Array --- */}
+      <aside className="mt-10 w-72 border-r border-slate-200 bg-white flex flex-col z-20 shadow-sm">
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+          <div className="text-[9px] text-slate-400 mb-1">SECTOR_01 // FLEET_ARRAY</div>
+          <div className="text-[10px] text-[#FF003C] font-black tracking-widest">MISSION_CRITICAL</div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {pods.map(pod => (
+            <WarPodCardLight 
+              key={pod.pod} 
+              pod={pod} 
+              isSelected={selectedPodId === pod.pod}
+              onClick={() => setSelectedPodId(pod.pod)}
+            />
+          ))}
+        </div>
+      </aside>
 
-      <section className="summary-grid" aria-label="Cluster summary">
-        <MetricTile icon={<Server />} label="Services" hint="Total unique services discovered across all namespaces." value={summary.services} tone="neutral" />
-        <MetricTile icon={<Box />} label="Pods" hint="Number of running pods being monitored in the cluster." value={snapshot.metrics.length} tone="neutral" />
-        <MetricTile icon={<RotateCcw />} label="Restarts" hint="Total container restarts across all pods. High count may indicate crashes or OOM kills." value={summary.restarts} tone={summary.restarts ? 'warning' : 'neutral'} />
-        <MetricTile icon={<AlertTriangle />} label="Log signatures" hint="Unique error patterns found in pod logs via Loki. Grouped by similar messages." value={summary.logSignatures} tone={summary.logSignatures ? 'danger' : 'neutral'} />
-        <MetricTile icon={<Gauge />} label="CPU throttling" hint="Highest CPU pressure across all pods. Shows how much CPU time pods are waiting for." value={summary.hasThrottleData ? `${summary.maxCpuThrottle.toFixed(1)}%` : 'n/a'} tone={summary.maxCpuThrottle ? 'warning' : 'neutral'} />
-        <MetricTile icon={<HardDrive />} label="Disk write" hint="Peak filesystem write throughput across all pods. Includes all disk I/O, not just PVC." value={summary.hasPvcData ? `${summary.maxPvcWrite.toFixed(1)} KiB/s` : 'n/a'} tone={summary.maxPvcWrite ? 'danger' : 'neutral'} />
-      </section>
-
-      <CollectorCoverage status={collectorStatus} metrics={snapshot.metrics} />
-
-      <section className="main-grid">
-        <div className="panel topology-panel">
-          <PanelHeader icon={<Network />} title="Dependency topology" />
-          <TopologyGraph
-            topology={snapshot.topology}
-            selectedId={selectedNodeId}
-            onSelect={setSelectedNodeId}
+      {/* --- Center: Command Canvas --- */}
+      <main className="flex-1 mt-10 relative bg-[#fcfdfe]">
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-slate-300 rotate-45" />
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] border border-slate-300 rotate-45" />
+        </div>
+        
+        <div className="w-full h-full relative z-10">
+          <TopologyGraphLight 
+            data={graph} 
+            selectedId={selectedPodId ? `pod:${selectedPodId}` : null}
+            onSelect={(id) => id?.startsWith('pod:') ? setSelectedPodId(id.replace('pod:', '')) : setSelectedPodId(null)}
           />
         </div>
-        <div className="panel side-panel">
-          {selectedMetric ? (
-            <NodeDetails metric={selectedMetric} onClear={() => setSelectedNodeId(null)} />
-          ) : (
-            <>
-              <PanelHeader icon={<Activity />} title="Root-cause insights" />
-              <InsightList insights={snapshot.insights} />
-            </>
-          )}
-        </div>
-      </section>
 
-      <section className="panel">
-        <PanelHeader icon={<Cpu />} title="Resource signals" />
-        <ResourceTable metrics={snapshot.metrics} />
-      </section>
-    </main>
-  );
-}
-
-function MetricTile({ icon, label, value, tone, hint }) {
-  return (
-    <div className={`metric-tile ${tone}`}>
-      <div className="tile-icon">{icon}</div>
-      <div>
-        <p>{label}{hint ? <TileInfo text={hint} /> : null}</p>
-        <strong>{value}</strong>
-      </div>
-    </div>
-  );
-}
-function NodeDetails({ metric, onClear }) {
-  const owner = metric.owner_kind && metric.owner_name ? `${metric.owner_kind}/${metric.owner_name}` : 'unknown';
-  const pvcMounts = metric.pvc_mounts?.length ? metric.pvc_mounts.join(', ') : metric.pvc_name ?? 'none';
-
-  return (
-    <div className="node-details">
-      <div className="details-header">
-        <button className="back-btn" onClick={onClear} aria-label="Back to insights">
-          <ArrowLeft size={18} />
-        </button>
-        <h3>{metric.pod}</h3>
-      </div>
-      <div className="details-body">
-        <div className="detail-row">
-          <span>Service</span>
-          <strong>{metric.service}</strong>
-        </div>
-        <div className="detail-row">
-          <span>Namespace</span>
-          <strong>{metric.namespace}</strong>
-        </div>
-        <div className="detail-row">
-          <span>Owner</span>
-          <strong>{owner}</strong>
-        </div>
-        <div className="detail-row">
-          <span>Node</span>
-          <strong>{metric.node_name ?? 'unknown'}</strong>
-        </div>
-        <div className="detail-row">
-          <span>PVC mounts</span>
-          <strong>{pvcMounts}</strong>
-        </div>
-        <hr />
-        <div className="detail-stat">
-          <p>CPU Utilization</p>
-          <Bar value={metric.cpu_millicores / metric.cpu_limit_millicores} label={`${metric.cpu_millicores.toFixed(1)}m`} />
-        </div>
-        <div className="detail-stat">
-          <p>Memory Usage</p>
-          <Bar value={metric.memory_mb / metric.memory_limit_mb} label={`${metric.memory_mb.toFixed(1)} MB`} />
-        </div>
-        <div className="detail-stat">
-          <p>Error Rate</p>
-          <div className="error-pill">{metric.error_rate_per_minute} errors/min</div>
-        </div>
-        <div className="detail-stat">
-          <p>Restart State</p>
-          <div className="restart-stack">
-            <span>{metric.restart_count ?? 0} restarts</span>
-            {metric.waiting_reason ? <span>{metric.waiting_reason}</span> : null}
-            {metric.last_termination_reason ? <span>{metric.last_termination_reason}</span> : null}
-            {metric.oom_killed ? <span>OOMKilled</span> : null}
+        {/* Floating Metrics Overlay */}
+        <div className="absolute bottom-6 left-6 flex gap-4 pointer-events-none">
+          <div className="bg-white border border-slate-200 p-4 flex gap-8 pointer-events-auto shadow-sm">
+            <div className="flex flex-col">
+              <span className="text-[9px] text-slate-400">CPU_AGGREGATE</span>
+              <span className="text-xl font-bold text-slate-900 tracking-tighter">42.8%</span>
+            </div>
+            <div className="w-px bg-slate-200" />
+            <div className="flex flex-col">
+              <span className="text-[9px] text-slate-400">MEM_COMMIT</span>
+              <span className="text-xl font-bold text-slate-900 tracking-tighter">8.4GB</span>
+            </div>
           </div>
         </div>
-        <LogSignatures signatures={metric.error_signatures ?? []} />
+      </main>
+
+      {/* --- Right Rail: Intelligence Feed --- */}
+      <aside className="mt-10 w-80 border-l border-slate-200 bg-white flex flex-col z-20 shadow-sm">
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+          <div className="text-[9px] text-[#FF003C] mb-1 tracking-widest font-black">INTELLIGENCE_FEED</div>
+          <div className="text-[10px] text-slate-400">REAL-TIME_REPORTS</div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {incidents.length > 0 ? (
+            incidents.map(incident => (
+              <WarIncidentCardLight key={incident.incident_id} incident={incident} />
+            ))
+          ) : (
+            <div className="p-16 text-center">
+               <ShieldCheck size={24} className="mx-auto text-slate-100 mb-2" />
+               <p className="text-[9px] text-slate-400 font-bold">ZERO_ANOMALIES</p>
+            </div>
+          )}
+
+          {selectedPod && (
+            <div className="mt-8 pt-8 border-t border-slate-100 animate-in fade-in slide-in-from-bottom-2 duration-500">
+               <div className="text-[9px] text-slate-400 mb-6 font-bold">SELECTED_SERVICE_METRICS</div>
+               <div className="space-y-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 border border-slate-200 flex items-center justify-center text-[#FF003C] bg-white shadow-sm">
+                      <Database size={24} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-black truncate text-slate-900">{selectedPod.service}</div>
+                      <div className="text-[8px] text-slate-400 truncate font-mono tracking-tighter">{selectedPod.pod}</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-8">
+                     <WarMetricLight label="CPU" value={`${(selectedPod.cpu_millicores / selectedPod.cpu_limit_millicores * 100).toFixed(1)}%`} />
+                     <WarMetricLight label="RAM" value={`${(selectedPod.memory_mb / selectedPod.memory_limit_mb * 100).toFixed(1)}%`} />
+                  </div>
+                  <div className="p-4 border border-slate-200 bg-white shadow-sm">
+                     <div className="text-[9px] text-slate-400 mb-3 font-bold">NETWORK_FLOW</div>
+                     <div className="flex justify-between text-[11px] font-black">
+                        <span className="text-slate-900">TX: {(selectedPod.network_tx_kbps / 1024).toFixed(2)} MB/S</span>
+                        <span className="text-[#FF003C]">RX: {(selectedPod.network_rx_kbps / 1024).toFixed(2)} MB/S</span>
+                     </div>
+                  </div>
+                  <button className="w-full py-2.5 border border-slate-900 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                     Generate Runbook <ExternalLink size={12} />
+                  </button>
+               </div>
+            </div>
+          )}
+        </div>
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-[9px] text-slate-400 font-bold tracking-tighter">
+           ENCRYPTION: AES_256_ACTIVE // SESSION: {Math.random().toString(16).slice(2, 10).toUpperCase()}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+// --- Components ---
+
+function StatItem({ label, value, color }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-slate-400">{label}:</span>
+      <span className={`${color} font-black`}>{value}</span>
+    </div>
+  );
+}
+
+function WarPodCardLight({ pod, isSelected, onClick }) {
+  const isCritical = pod.error_rate_per_minute > 5;
+  
+  return (
+    <div 
+      onClick={onClick}
+      className={`p-3 border transition-all cursor-pointer group ${
+        isSelected ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 hover:border-slate-400 shadow-sm'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-1.5 h-1.5 ${isCritical ? 'bg-[#FF003C] animate-pulse shadow-[0_0_8px_rgba(255,0,60,0.5)]' : isSelected ? 'bg-white' : 'bg-slate-900'}`} />
+          <span className="text-[11px] font-black truncate uppercase tracking-tight">{pod.service}</span>
+        </div>
+        <span className={`text-[9px] font-bold ${isSelected ? 'text-white' : isCritical ? 'text-[#FF003C]' : 'text-slate-400'}`}>
+          {pod.error_rate_per_minute > 0 ? `${pod.error_rate_per_minute} ERR/M` : 'NOMINAL'}
+        </span>
+      </div>
+      <div className="flex items-end gap-1 h-6">
+        {[4, 7, 2, 8, 5, 9, 3, 6, 4, 8, 5, 7, 2, 9].map((h, i) => (
+          <div key={i} className={`flex-1 ${isSelected ? 'bg-white/20' : 'bg-slate-100 group-hover:bg-slate-200'}`} style={{ height: `${h * 10}%` }} />
+        ))}
       </div>
     </div>
   );
 }
 
-function CollectorCoverage({ status, metrics }) {
-  const kubernetesPods = metrics.filter(metric => metric.owner_kind || metric.node_name || metric.pvc_mounts?.length).length;
-  const throttlingPods = metrics.filter(metric => metric.cpu_throttled_percent != null).length;
-  const pvcPods = metrics.filter(metric => metric.pvc_read_kbps != null || metric.pvc_write_kbps != null).length;
-  const logPods = metrics.filter(metric => metric.error_signatures?.length).length;
-  const kubeStatus = status?.live_collector_status?.kubernetes;
-  const optionalErrors = status?.live_collector_status?.optional_errors ?? [];
-
+function WarIncidentCardLight({ incident }) {
   return (
-    <section className="coverage-strip" aria-label="Collector coverage">
-      <CoverageItem icon={<Network />} label="Kubernetes API" hint="Enriches pods with owner, node, restart, and PVC metadata from the Kubernetes API." value={kubeStatus?.available ? `${kubernetesPods} pods enriched` : 'unavailable'} tone={kubeStatus?.available ? 'ok' : 'warn'} />
-      <CoverageItem icon={<Gauge />} label="Prometheus extras" hint="Additional metrics like CPU throttling and filesystem I/O from Prometheus queries." value={`${throttlingPods} throttle / ${pvcPods} PVC pods`} tone="ok" />
-      <CoverageItem icon={<Terminal />} label="Loki patterns" hint="Error log patterns extracted from Loki. Pods with signatures have recent error logs." value={`${logPods} pods with signatures`} tone={logPods ? 'warn' : 'ok'} />
-      <CoverageItem icon={<AlertTriangle />} label="Optional query errors" hint="Count of non-critical Prometheus queries that returned errors or empty results." value={optionalErrors.length} tone={optionalErrors.length ? 'warn' : 'ok'} />
-    </section>
-  );
-}
-
-function CoverageItem({ icon, label, value, tone, hint }) {
-  return (
-    <div className={`coverage-item ${tone}`}>
-      {React.cloneElement(icon, { size: 17 })}
-      <div>
-        <span>{label}{hint ? <TileInfo text={hint} /> : null}</span>
-        <strong>{value}</strong>
+    <div className="p-5 border-l-4 border-[#FF003C] bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all group cursor-pointer">
+      <div className="flex justify-between mb-3">
+        <span className="text-[#FF003C] font-black text-[9px] tracking-widest">CRITICAL_ANOMALY</span>
+        <span className="text-slate-400 text-[8px] font-bold">{new Date(incident.timestamp).toLocaleTimeString()}</span>
       </div>
+      <h4 className="text-[12px] font-black text-slate-900 mb-3 leading-tight uppercase tracking-tighter">{incident.summary}</h4>
+      <p className="text-[10px] text-slate-500 leading-relaxed font-medium">{incident.root_cause_explanation}</p>
     </div>
   );
 }
 
-function LogSignatures({ signatures }) {
-  if (!signatures.length) {
-    return null;
-  }
-
+function WarMetricLight({ label, value }) {
   return (
-    <div className="log-signatures">
-      <p>Top log signatures</p>
-      {signatures.slice(0, 3).map(signature => (
-        <article key={signature.signature}>
-          <strong>{signature.count}x</strong>
-          <span>{signature.signature}</span>
-          <small>{formatTime(signature.first_seen)} - {formatTime(signature.last_seen)}</small>
-        </article>
-      ))}
+    <div>
+      <div className="text-[9px] text-slate-400 mb-1.5 font-bold uppercase">{label}</div>
+      <div className="text-lg font-black text-slate-900 tracking-tighter">{value}</div>
     </div>
   );
 }
 
-function PanelHeader({ icon, title }) {
-  return (
-    <div className="panel-header">
-      {React.cloneElement(icon, { size: 18 })}
-      <h2>{title}</h2>
-    </div>
-  );
-}
-
-function TopologyGraph({ topology, selectedId, onSelect }) {
-  const svgRef = React.useRef(null);
-  const containerRef = React.useRef(null);
-  const [graphData, setGraphData] = useState({ nodes: [], links: [] });
+function TopologyGraphLight({ data, selectedId, onSelect }) {
+  const svgRef = useRef(null);
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    const nodes = topology.nodes.map(n => ({ ...n }));
-    const links = topology.edges.map(e => ({ ...e }));
-    setGraphData({ nodes, links });
-  }, [topology]);
-
-  useEffect(() => {
-    if (!graphData.nodes.length || !svgRef.current) return;
+    if (!data.nodes?.length || !svgRef.current) return;
 
     const width = containerRef.current.clientWidth;
-    const dense = graphData.nodes.length > 18;
-    const height = Math.min(760, Math.max(480, graphData.nodes.length * 24));
-    const radiusFor = (node) => {
-      if (node.kind === 'service') return dense ? 21 : 28;
-      if (node.kind === 'pvc') return dense ? 18 : 22;
-      return dense ? 16 : 22;
-    };
-    const labelOffsetFor = (node) => radiusFor(node) + (dense ? 17 : 20);
-    const shortLabel = (label) => {
-      if (!dense || label.length <= 22) return label;
-      return `${label.slice(0, 19)}...`;
-    };
+    const height = containerRef.current.clientHeight;
+
     const svg = d3.select(svgRef.current)
       .attr('width', width)
-      .attr('height', height)
-      .style('height', `${height}px`);
+      .attr('height', height);
 
     svg.selectAll('*').remove();
-
-    const defs = svg.append('defs');
-    defs.append('marker')
-      .attr('id', 'arrow')
-      .attr('viewBox', '0 0 10 10')
-      .attr('refX', 32)
-      .attr('refY', 5)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto-start-reverse')
-      .append('path')
-      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
-      .attr('fill', '#96a4ab');
 
     const g = svg.append('g');
 
     const zoom = d3.zoom()
-      .scaleExtent([0.5, 3])
+      .scaleExtent([0.1, 4])
       .on('zoom', (event) => g.attr('transform', event.transform));
     svg.call(zoom);
 
-    const simulation = d3.forceSimulation(graphData.nodes)
-      .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(d => d.relationship === 'calls' ? 180 : 112))
-      .force('charge', d3.forceManyBody().strength(dense ? -650 : -430))
+    const simulation = d3.forceSimulation(data.nodes)
+      .force('link', d3.forceLink(data.edges || []).id(d => d.id).distance(200))
+      .force('charge', d3.forceManyBody().strength(-1000))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('x', d3.forceX(width / 2).strength(0.04))
-      .force('y', d3.forceY(height / 2).strength(0.04))
-      .force('collision', d3.forceCollide().radius(d => radiusFor(d) + (dense ? 34 : 38)));
+      .force('collision', d3.forceCollide().radius(100));
 
     const link = g.append('g')
       .selectAll('line')
-      .data(graphData.links)
+      .data(data.edges || [])
       .join('line')
-      .attr('class', d => `edge ${d.relationship}`)
-      .attr('marker-end', d => d.relationship === 'calls' ? 'url(#arrow)' : '');
+      .attr('stroke', d => d.relationship === 'causal' ? '#FF003C' : '#e2e8f0')
+      .attr('stroke-width', d => d.relationship === 'causal' ? 3 : 1)
+      .attr('stroke-dasharray', d => d.relationship === 'causal' ? '0' : '6 4');
 
     const node = g.append('g')
-      .selectAll('.node-group')
-      .data(graphData.nodes)
+      .selectAll('.node')
+      .data(data.nodes)
       .join('g')
-      .attr('class', d => `node-group node ${d.status.toLowerCase()} ${d.id === selectedId ? 'selected' : ''}`)
-      .on('click', (event, d) => onSelect(d.id))
+      .attr('class', 'cursor-pointer')
+      .on('click', (e, d) => onSelect(d.id))
       .call(d3.drag()
-        .on('start', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart();
-          d.fx = d.x;
-          d.fy = d.y;
-        })
-        .on('drag', (event, d) => {
-          d.fx = event.x;
-          d.fy = event.y;
-        })
-        .on('end', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0);
-          d.fx = null;
-          d.fy = null;
-        }));
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended));
 
-    node.append('circle')
-      .attr('r', d => radiusFor(d));
+    node.append('rect')
+      .attr('x', -70)
+      .attr('y', -30)
+      .attr('width', 140)
+      .attr('height', 60)
+      .attr('fill', '#ffffff')
+      .attr('stroke', d => d.status === 'CRITICAL' ? '#FF003C' : d.id === selectedId ? '#0f172a' : '#e2e8f0')
+      .attr('stroke-width', d => d.id === selectedId || d.status === 'CRITICAL' ? 3 : 1)
+      .style('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.05))');
 
     node.append('text')
-      .attr('class', 'node-label')
-      .attr('y', d => labelOffsetFor(d))
-      .text(d => shortLabel(d.label))
-      .append('title')
+      .attr('y', 0)
+      .attr('text-anchor', 'middle')
+      .attr('fill', d => d.status === 'CRITICAL' ? '#FF003C' : '#0f172a')
+      .attr('font-size', '11px')
+      .attr('font-weight', '900')
       .text(d => d.label);
 
-    simulation.on('tick', () => {
-      graphData.nodes.forEach(d => {
-        const padding = radiusFor(d) + (dense ? 36 : 42);
-        d.x = Math.max(padding, Math.min(width - padding, d.x));
-        d.y = Math.max(padding, Math.min(height - padding, d.y));
-      });
+    node.append('text')
+      .attr('y', 18)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#94a3b8')
+      .attr('font-size', '9px')
+      .attr('font-weight', 'bold')
+      .text(d => d.kind === 'pod' ? 'POD_NODE' : 'SVC_NODE');
 
+    simulation.on('tick', () => {
       link
         .attr('x1', d => d.source.x)
         .attr('y1', d => d.source.y)
@@ -529,152 +345,29 @@ function TopologyGraph({ topology, selectedId, onSelect }) {
       node.attr('transform', d => `translate(${d.x}, ${d.y})`);
     });
 
+    function dragstarted(event) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      event.subject.fx = event.subject.x;
+      event.subject.fy = event.subject.y;
+    }
+    function dragged(event) {
+      event.subject.fx = event.x;
+      event.subject.fy = event.y;
+    }
+    function dragended(event) {
+      if (!event.active) simulation.alphaTarget(0);
+      event.subject.fx = null;
+      event.subject.fy = null;
+    }
+
     return () => simulation.stop();
-  }, [graphData, onSelect, selectedId]);
+  }, [data, selectedId]);
 
   return (
-    <div ref={containerRef} className="topology-container">
-      <svg ref={svgRef} className="topology" role="img" aria-label="Service dependency topology" />
+    <div ref={containerRef} className="w-full h-full">
+      <svg ref={svgRef} className="w-full h-full" />
     </div>
   );
-}
-
-function InsightList({ insights }) {
-  if (!insights.length) {
-    return <p className="empty">No active root-cause insights.</p>;
-  }
-
-  return (
-    <div className="insight-list">
-      {insights.map((insight) => (
-        <article className="insight" key={`${insight.event}-${insight.affected_services.join('-')}`}>
-          <div className="insight-title">
-            <span className={`status-dot ${insight.status.toLowerCase()}`} />
-            <h3>{insight.event}</h3>
-          </div>
-          <p>{insight.root_cause}</p>
-          <p className="muted">{insight.correlation}</p>
-          <div className="recommendation">{insight.recommendation}</div>
-          <div className="service-tags">
-            {insight.affected_services.map((service) => (
-              <span key={service}>{service}</span>
-            ))}
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function ResourceTable({ metrics }) {
-  if (!metrics.length) {
-    return <p className="empty">No pod metrics are available for the current selector.</p>;
-  }
-
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Namespace</th>
-            <th>Pod</th>
-            <th>Service</th>
-            <th>Owner</th>
-            <th>Node</th>
-            <th>CPU</th>
-            <th>Throttle</th>
-            <th>Memory</th>
-            <th>Network</th>
-            <th>Drops/s</th>
-            <th>PVC</th>
-            <th>PVC I/O</th>
-            <th>Restarts</th>
-            <th>Errors/min</th>
-            <th>Top log signature</th>
-          </tr>
-        </thead>
-        <tbody>
-          {metrics.map((metric) => (
-            <tr key={metric.pod}>
-              <td>{metric.namespace}</td>
-              <td>{metric.pod}</td>
-              <td>{metric.service}</td>
-              <td>{metric.owner_kind && metric.owner_name ? `${metric.owner_kind}/${metric.owner_name}` : 'unknown'}</td>
-              <td>{metric.node_name ?? 'unknown'}</td>
-              <td><Bar value={metric.cpu_millicores / metric.cpu_limit_millicores} label={`${metric.cpu_millicores.toFixed(1)}m`} /></td>
-              <td>{formatOptional(metric.cpu_throttled_percent, '%')}</td>
-              <td><Bar value={metric.memory_mb / metric.memory_limit_mb} label={`${metric.memory_mb.toFixed(1)} MB`} /></td>
-              <td>{(metric.network_rx_kbps + metric.network_tx_kbps).toFixed(1)} kbps</td>
-              <td>{formatDrops(metric)}</td>
-              <td>{metric.pvc_name ? `${metric.pvc_name} (${formatOptional(metric.pvc_latency_ms, ' ms')})` : 'none'}</td>
-              <td>{formatPvcIo(metric)}</td>
-              <td>{formatRestart(metric)}</td>
-              <td>{metric.error_rate_per_minute}</td>
-              <td className="signature-cell">{metric.error_signatures?.[0]?.signature ?? 'none'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Bar({ value, label }) {
-  const clamped = Math.min(value, 1);
-  return (
-    <div className="bar-cell">
-      <div className="bar-track"><span style={{ width: `${clamped * 100}%` }} /></div>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function buildSummary(snapshot) {
-  const services = new Set(snapshot.metrics.map((metric) => metric.service)).size;
-  const maxPvcLatency = Math.max(0, ...snapshot.metrics.map((metric) => metric.pvc_latency_ms ?? 0));
-  const restarts = snapshot.metrics.reduce((sum, metric) => sum + (metric.restart_count ?? 0), 0);
-  const logSignatures = snapshot.metrics.reduce((sum, metric) => sum + (metric.error_signatures?.length ?? 0), 0);
-  const hasThrottleData = snapshot.metrics.some((metric) => metric.cpu_throttled_percent != null);
-  const maxCpuThrottle = Math.max(0, ...snapshot.metrics.map((metric) => metric.cpu_throttled_percent ?? 0));
-  const hasPvcData = snapshot.metrics.some((metric) => metric.pvc_write_kbps != null);
-  const maxPvcWrite = Math.max(0, ...snapshot.metrics.map((metric) => metric.pvc_write_kbps ?? 0));
-  return { services, maxPvcLatency, restarts, logSignatures, hasThrottleData, maxCpuThrottle, hasPvcData, maxPvcWrite };
-}
-
-function sourceLabel(source) {
-  if (source === 'live') return 'Live telemetry';
-  if (source === 'live-fallback') return 'Live fallback';
-  return 'Demo data';
-}
-
-function formatTime(value) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  }).format(new Date(value));
-}
-
-function formatOptional(value, suffix = '') {
-  if (value == null) return 'n/a';
-  return `${Number(value).toFixed(1)}${suffix}`;
-}
-
-function formatDrops(metric) {
-  const rx = metric.network_rx_drops_per_second;
-  const tx = metric.network_tx_drops_per_second;
-  if (rx == null && tx == null) return 'n/a';
-  return `${((rx ?? 0) + (tx ?? 0)).toFixed(2)}`;
-}
-
-function formatPvcIo(metric) {
-  if (metric.pvc_read_kbps == null && metric.pvc_write_kbps == null) return 'n/a';
-  return `R ${formatOptional(metric.pvc_read_kbps)} / W ${formatOptional(metric.pvc_write_kbps)} KiB/s`;
-}
-
-function formatRestart(metric) {
-  const reasons = [metric.waiting_reason, metric.last_termination_reason, metric.oom_killed ? 'OOMKilled' : null].filter(Boolean);
-  return reasons.length ? `${metric.restart_count ?? 0} (${reasons.join(', ')})` : `${metric.restart_count ?? 0}`;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

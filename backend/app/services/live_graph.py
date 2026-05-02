@@ -54,6 +54,8 @@ class LiveGraphBuilder:
         namespace_filter: str | None = None
     ) -> nx.DiGraph:
         """Rebuild the entire graph from the latest snapshot + optional flow data."""
+        logger.info("Rebuilding graph with %d metrics and %d flows", 
+                    len(snapshot.metrics), len(flows or []))
         g = nx.DiGraph()
 
         # --- Add namespace nodes ---

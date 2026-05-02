@@ -69,3 +69,8 @@ class KpiBuffer:
             for buf in pod_buffers.values():
                 max_fill = max(max_fill, len(buf) / self.window_size)
         return max_fill
+
+    def get_history(self, pod: str) -> dict[str, list[float]]:
+        """Return all historical KPI points for a specific pod."""
+        pod_data = self._buffers.get(pod, {})
+        return {kpi: list(buf) for kpi, buf in pod_data.items()}

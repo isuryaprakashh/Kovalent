@@ -15,12 +15,14 @@ from app.collectors.kubernetes_collector import KubernetesCollectorConfig, Kuber
 from app.collectors.mock_collector import MockTelemetryCollector
 from app.collectors.prometheus_collector import CollectorConfig, PrometheusTelemetryCollector, TelemetryCollectionError
 from app.correlation import MasterCorrelationEngine
+from app.collectors.kafka_producer import TelemetryProducer
 from app.models import AgentFinding, ClusterSnapshot, PodMetric, Severity, Topology, TopologyEdge, TopologyNode
 
 
 class InsightService:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
+        self.producer = TelemetryProducer()
         self.demo_collector = MockTelemetryCollector()
         self.kubernetes_collector = KubernetesDiscoveryCollector(
             KubernetesCollectorConfig(
@@ -54,6 +56,13 @@ class InsightService:
 
     async def build_snapshot(self) -> ClusterSnapshot:
         metrics, source = await self._collect_metrics()
+        
+        # Stream metrics to Kafka
+        for m in metrics:
+            self.producer.produce("metrics.cpu", m.pod, {"pod": m.pod, "value": m.cpu_ratio, "timestamp": m.observed_at})
+            self.producer.produce("metrics.memory", m.pod, {"pod": m.pod, "value": m.memory_ratio, "timestamp": m.observed_at})
+        self.producer.flush()
+
         findings = self._run_agents(metrics)
         insights = self.engine.correlate(findings)
         return ClusterSnapshot(
@@ -77,8 +86,12 @@ class InsightService:
 
     def _run_agents(self, metrics: list[PodMetric]) -> list[AgentFinding]:
         findings: list[AgentFinding] = []
+        from app.services.agent_bus import agent_bus
         for agent in self.agents:
-            findings.extend(agent.analyze(metrics))
+            agent_findings = agent.analyze(metrics)
+            for f in agent_findings:
+                agent_bus.publish(f)
+            findings.extend(agent_findings)
         return findings
 
     def _build_topology(self, metrics: list[PodMetric], findings: list[AgentFinding]) -> Topology:

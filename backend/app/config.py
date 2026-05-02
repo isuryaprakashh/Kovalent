@@ -32,6 +32,8 @@ class Settings:
     causal_window_size: int = 60
     causal_threshold: float = 0.15
     # M6 — LLM
+    # M1/M2 — Streaming
+    kafka_bootstrap_servers: str = "localhost:19092"
     google_api_key: str | None = None
 
 
@@ -53,6 +55,7 @@ def get_settings() -> Settings:
         causal_retrain_interval=int(os.getenv("KOVALENT_CAUSAL_RETRAIN_INTERVAL", "60")),
         causal_window_size=int(os.getenv("KOVALENT_CAUSAL_WINDOW_SIZE", "60")),
         causal_threshold=float(os.getenv("KOVALENT_CAUSAL_THRESHOLD", "0.15")),
+        kafka_bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092"),
         google_api_key=os.getenv("GOOGLE_API_KEY") or None,
     )
 

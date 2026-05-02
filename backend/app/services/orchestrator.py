@@ -51,6 +51,16 @@ class Orchestrator:
         self._report_cache: deque[OrchestratorReport] = deque(maxlen=50)
         self._redis: Any | None = None
         self._init_redis()
+        
+        # M3 — Subscribe to AgentBus
+        from app.services.agent_bus import agent_bus
+        agent_bus.subscribe(self._on_agent_finding)
+
+    def _on_agent_finding(self, finding: AgentFinding) -> None:
+        """Handle real-time anomaly events from the specialist agents."""
+        logger.info("Orchestrator: received finding from bus: %s [%s] on %s",
+                    finding.agent, finding.signal, finding.pod)
+        # This can trigger proactive actions or store events for future reports
 
     def _init_redis(self) -> None:
         try:

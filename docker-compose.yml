@@ -5,6 +5,19 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr localhost:8082
+    ports:
+      - "19092:19092"
+      - "8082:8082"
   backend:
     build:
       context: ./backend
@@ -12,8 +25,10 @@ services:
       - "8000:8000"
     environment:
       REDIS_URL: redis://redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     depends_on:
       - redis
+      - redpanda
   frontend:
     build:
       context: ./frontend
