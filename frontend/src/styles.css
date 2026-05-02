@@ -129,7 +129,7 @@ h1 {
 .summary-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 14px;
 }
 
@@ -163,6 +163,50 @@ h1 {
 .metric-tile.danger .tile-icon {
   background: #ffe4df;
   color: #a63725;
+}
+
+.coverage-strip {
+  background: #ffffff;
+  border: 1px solid #dbe3e7;
+  border-radius: 8px;
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.coverage-item {
+  align-items: center;
+  background: #f8fafb;
+  display: flex;
+  gap: 10px;
+  min-height: 64px;
+  padding: 12px 14px;
+}
+
+.coverage-item svg {
+  color: #367c91;
+  flex: 0 0 auto;
+}
+
+.coverage-item.warn svg {
+  color: #b05b19;
+}
+
+.coverage-item span {
+  color: #64737b;
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.coverage-item strong {
+  color: #26323d;
+  display: block;
+  font-size: 0.95rem;
+  margin-top: 2px;
 }
 
 .metric-tile p {
@@ -302,6 +346,61 @@ h1 {
   font-size: 0.9rem;
 }
 
+.restart-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.restart-stack span {
+  background: #eef3f5;
+  border-radius: 999px;
+  color: #40535d;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 5px 8px;
+}
+
+.restart-stack span:last-child {
+  background: #fff0e9;
+  color: #944416;
+}
+
+.log-signatures {
+  border-top: 1px solid #e1e7ea;
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.log-signatures > p {
+  color: #26323d;
+  font-weight: 700;
+  margin: 0;
+}
+
+.log-signatures article {
+  background: #f8fafb;
+  border: 1px solid #e1e7ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.log-signatures article strong {
+  color: #b05b19;
+}
+
+.log-signatures article span {
+  overflow-wrap: anywhere;
+}
+
+.log-signatures article small {
+  color: #64737b;
+}
+
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(20px); }
   to { opacity: 1; transform: translateX(0); }
@@ -398,7 +497,7 @@ h1 {
 
 table {
   border-collapse: collapse;
-  min-width: 920px;
+  min-width: 1620px;
   width: 100%;
 }
 
@@ -438,6 +537,77 @@ th {
   height: 100%;
 }
 
+.signature-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.tile-info-wrap {
+  display: inline-flex;
+  margin-left: 5px;
+  position: relative;
+  vertical-align: middle;
+}
+
+.tile-info-icon {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 50%;
+  color: #6b7f8a;
+  cursor: help;
+  display: inline-flex;
+  height: 16px;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  width: 16px;
+}
+
+.tile-info-wrap:hover .tile-info-icon {
+  background: #1a73e8;
+  color: #ffffff;
+}
+
+.tile-info-tooltip {
+  background: rgba(30, 41, 51, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  bottom: calc(100% + 8px);
+  color: #e8eef1;
+  font-size: 0.75rem;
+  font-weight: 500;
+  left: 50%;
+  line-height: 1.45;
+  max-width: 240px;
+  opacity: 0;
+  padding: 8px 11px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  white-space: normal;
+  width: max-content;
+  z-index: 100;
+}
+
+.tile-info-tooltip::after {
+  border: 5px solid transparent;
+  border-top-color: rgba(30, 41, 51, 0.95);
+  bottom: -10px;
+  content: '';
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.tile-info-wrap:hover .tile-info-tooltip {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }
@@ -459,8 +629,15 @@ th {
   }
 
   .summary-grid,
-  .main-grid {
+  .main-grid,
+  .coverage-strip {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1120px) {
+  .summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

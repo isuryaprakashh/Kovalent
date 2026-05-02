@@ -14,21 +14,45 @@ class Severity(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+class LogErrorSignature(BaseModel):
+    signature: str
+    count: int = Field(ge=1)
+    first_seen: datetime
+    last_seen: datetime
+    sample: str
+
+
 class PodMetric(BaseModel):
     namespace: str
     pod: str
     service: str
+    owner_kind: str | None = None
+    owner_name: str | None = None
+    node_name: str | None = None
     cpu_millicores: float = Field(ge=0)
     cpu_limit_millicores: float = Field(gt=0)
+    cpu_request_millicores: float | None = Field(default=None, ge=0)
+    cpu_throttled_percent: float | None = Field(default=None, ge=0)
     memory_mb: float = Field(ge=0)
     memory_limit_mb: float = Field(gt=0)
+    memory_request_mb: float | None = Field(default=None, ge=0)
     network_rx_kbps: float = Field(ge=0)
     network_tx_kbps: float = Field(ge=0)
+    network_rx_drops_per_second: float | None = Field(default=None, ge=0)
+    network_tx_drops_per_second: float | None = Field(default=None, ge=0)
     pvc_name: str | None = None
+    pvc_mounts: list[str] = Field(default_factory=list)
+    pvc_read_kbps: float | None = Field(default=None, ge=0)
+    pvc_write_kbps: float | None = Field(default=None, ge=0)
     pvc_latency_ms: float | None = Field(default=None, ge=0)
     pvc_iops: float | None = Field(default=None, ge=0)
     error_rate_per_minute: float = Field(default=0, ge=0)
+    error_signatures: list[LogErrorSignature] = Field(default_factory=list)
     restart_count: int = Field(default=0, ge=0)
+    restart_reason: str | None = None
+    last_termination_reason: str | None = None
+    waiting_reason: str | None = None
+    oom_killed: bool = False
     observed_at: datetime
 
     @property

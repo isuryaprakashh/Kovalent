@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kovalent-memory-leak
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kovalent-memory-leak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kovalent-memory-leak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kovalent-memory-leak
+        app: kovalent-memory-leak
+    spec:
+      containers:
+        - name: memory-leak
+          image: python:3.12-alpine
+          command:
+            - python
+            - -c
+            - |
+              import time
+              chunks = []
+              while True:
+                  chunks.append(bytearray(2 * 1024 * 1024))
+                  print(f"allocated_mb={len(chunks) * 2}", flush=True)
+                  time.sleep(1)
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

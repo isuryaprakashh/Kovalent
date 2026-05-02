@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from the backend directory (one level up from app/)
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_env_path, override=True)
 
 
 @dataclass(frozen=True)
@@ -13,6 +20,8 @@ class Settings:
     query_window: str = "5m"
     request_timeout_seconds: float = 8.0
     live_fallback_enabled: bool = True
+    kubernetes_discovery_mode: str = "auto"
+    kubernetes_event_limit: int = 250
     dependencies_json: str | None = None
 
 
@@ -25,5 +34,7 @@ def get_settings() -> Settings:
         query_window=os.getenv("KOVALENT_QUERY_WINDOW", "5m"),
         request_timeout_seconds=float(os.getenv("KOVALENT_REQUEST_TIMEOUT_SECONDS", "8")),
         live_fallback_enabled=os.getenv("KOVALENT_LIVE_FALLBACK", "true").lower() in {"1", "true", "yes"},
+        kubernetes_discovery_mode=os.getenv("KOVALENT_KUBERNETES_DISCOVERY_MODE", "auto").lower(),
+        kubernetes_event_limit=int(os.getenv("KOVALENT_KUBERNETES_EVENT_LIMIT", "250")),
         dependencies_json=os.getenv("KOVALENT_DEPENDENCIES"),
     )

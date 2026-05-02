@@ -40,6 +40,9 @@ def api_status() -> dict:
         "namespace_regex": service.settings.namespace_regex,
         "query_window": service.settings.query_window,
         "live_fallback_enabled": service.settings.live_fallback_enabled,
+        "kubernetes_discovery_mode": service.settings.kubernetes_discovery_mode,
+        "kubernetes_event_limit": service.settings.kubernetes_event_limit,
+        "live_collector_status": service.live_collector.status,
     }
 
 

@@ -1,10 +1,67 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, AlertTriangle, ArrowLeft, Box, Cpu, Database, Network, RefreshCw, Server } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  ArrowLeft,
+  Box,
+  Cpu,
+  Database,
+  Gauge,
+  HardDrive,
+  Info,
+  Network,
+  RefreshCw,
+  RotateCcw,
+  Server,
+  Terminal
+} from 'lucide-react';
 import * as d3 from 'd3';
 import './styles.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000';
+
+const SERVICE_INFO = {
+  'kube-dns': 'Cluster DNS server. Resolves service names to IP addresses inside Kubernetes.',
+  'coredns': 'Cluster DNS server. Resolves service names to IP addresses inside Kubernetes.',
+  'etcd': 'Key-value store. Holds all cluster state — pods, configs, secrets, and scheduling data.',
+  'kube-apiserver': 'API gateway. Every kubectl command and controller talks to the cluster through this.',
+  'kube-controller-manager': 'Runs control loops. Manages replicas, nodes, endpoints, and service accounts.',
+  'kube-scheduler': 'Assigns pods to nodes. Picks the best node based on resources and constraints.',
+  'kube-proxy': 'Network proxy. Routes traffic to the correct pod behind each Kubernetes service.',
+  'storage-provisioner': 'Auto-creates persistent volumes when a pod requests storage.',
+  'alertmanager': 'Handles Prometheus alerts. Deduplicates, groups, and routes notifications.',
+  'grafana': 'Visualization dashboard. Renders charts and graphs from Prometheus and Loki data.',
+  'kube-state-metrics': 'Exports Kubernetes object states (pods, deployments, nodes) as Prometheus metrics.',
+  'kube-prometheus-stack-prometheus-operator': 'Manages Prometheus instances. Watches for monitoring config changes.',
+  'prometheus-node-exporter': 'Exports hardware and OS metrics from each node (CPU, memory, disk, network).',
+  'prometheus': 'Time-series database. Scrapes and stores all cluster metrics for querying.',
+  'loki': 'Log aggregation system. Collects and indexes container logs for querying.',
+  'promtail': 'Log shipper. Tails container log files and pushes them to Loki.',
+  'nginx': 'Web server / reverse proxy. Serves HTTP traffic or load-balances to backends.',
+};
+
+function getServiceInfo(service) {
+  if (SERVICE_INFO[service]) return SERVICE_INFO[service];
+  // Try partial matches for long operator names
+  for (const [key, desc] of Object.entries(SERVICE_INFO)) {
+    if (service.includes(key)) return desc;
+  }
+  return `Kubernetes workload running in the cluster.`;
+}
+
+function TileInfo({ text }) {
+  return (
+    <span className="tile-info-wrap">
+      <span className="tile-info-icon">
+        <Info size={11} />
+      </span>
+      <span className="tile-info-tooltip">{text}</span>
+    </span>
+  );
+}
+
+
 
 const fallbackSnapshot = {
   generated_at: new Date().toISOString(),
@@ -20,10 +77,16 @@ const fallbackSnapshot = {
       memory_limit_mb: 1024,
       network_rx_kbps: 920,
       network_tx_kbps: 1340,
+      network_rx_drops_per_second: null,
+      network_tx_drops_per_second: null,
       pvc_name: null,
+      pvc_mounts: [],
+      pvc_read_kbps: null,
+      pvc_write_kbps: null,
       pvc_latency_ms: null,
       pvc_iops: null,
       error_rate_per_minute: 4,
+      error_signatures: [],
       restart_count: 0,
       observed_at: new Date().toISOString()
     },
@@ -37,10 +100,16 @@ const fallbackSnapshot = {
       memory_limit_mb: 2048,
       network_rx_kbps: 560,
       network_tx_kbps: 460,
+      network_rx_drops_per_second: null,
+      network_tx_drops_per_second: null,
       pvc_name: 'orders-data',
+      pvc_mounts: ['orders-data'],
+      pvc_read_kbps: 80,
+      pvc_write_kbps: 420,
       pvc_latency_ms: 165,
       pvc_iops: 920,
       error_rate_per_minute: 1,
+      error_signatures: [],
       restart_count: 0,
       observed_at: new Date().toISOString()
     },
@@ -54,10 +123,24 @@ const fallbackSnapshot = {
       memory_limit_mb: 512,
       network_rx_kbps: 1480,
       network_tx_kbps: 730,
+      network_rx_drops_per_second: null,
+      network_tx_drops_per_second: null,
       pvc_name: null,
+      pvc_mounts: [],
+      pvc_read_kbps: null,
+      pvc_write_kbps: null,
       pvc_latency_ms: null,
       pvc_iops: null,
       error_rate_per_minute: 18,
+      error_signatures: [
+        {
+          signature: 'error checkout failed for order <num>',
+          count: 12,
+          first_seen: new Date(Date.now() - 300000).toISOString(),
+          last_seen: new Date().toISOString(),
+          sample: 'ERROR checkout failed for order 451'
+        }
+      ],
       restart_count: 1,
       observed_at: new Date().toISOString()
     }
@@ -99,6 +182,7 @@ function App() {
   const [snapshot, setSnapshot] = useState(fallbackSnapshot);
   const [loading, setLoading] = useState(false);
   const [apiState, setApiState] = useState('demo');
+  const [collectorStatus, setCollectorStatus] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
 
@@ -118,6 +202,10 @@ function App() {
       const nextSnapshot = await response.json();
       setSnapshot(nextSnapshot);
       setApiState(nextSnapshot.source ?? 'live');
+      fetch(`${API_BASE}/api/status`)
+        .then(statusResponse => statusResponse.ok ? statusResponse.json() : null)
+        .then(status => setCollectorStatus(status))
+        .catch(() => setCollectorStatus(null));
       setApiError(null);
     } catch {
       setSnapshot(fallbackSnapshot);
@@ -155,11 +243,15 @@ function App() {
       {apiError ? <div className="status-banner" role="status">{apiError}</div> : null}
 
       <section className="summary-grid" aria-label="Cluster summary">
-        <MetricTile icon={<Server />} label="Services" value={summary.services} tone="neutral" />
-        <MetricTile icon={<Box />} label="Pods" value={snapshot.metrics.length} tone="neutral" />
-        <MetricTile icon={<AlertTriangle />} label="Insights" value={snapshot.insights.length} tone="warning" />
-        <MetricTile icon={<Database />} label="PVC latency" value={`${summary.maxPvcLatency.toFixed(1)} ms`} tone="danger" />
+        <MetricTile icon={<Server />} label="Services" hint="Total unique services discovered across all namespaces." value={summary.services} tone="neutral" />
+        <MetricTile icon={<Box />} label="Pods" hint="Number of running pods being monitored in the cluster." value={snapshot.metrics.length} tone="neutral" />
+        <MetricTile icon={<RotateCcw />} label="Restarts" hint="Total container restarts across all pods. High count may indicate crashes or OOM kills." value={summary.restarts} tone={summary.restarts ? 'warning' : 'neutral'} />
+        <MetricTile icon={<AlertTriangle />} label="Log signatures" hint="Unique error patterns found in pod logs via Loki. Grouped by similar messages." value={summary.logSignatures} tone={summary.logSignatures ? 'danger' : 'neutral'} />
+        <MetricTile icon={<Gauge />} label="CPU throttling" hint="Highest CPU pressure across all pods. Shows how much CPU time pods are waiting for." value={summary.hasThrottleData ? `${summary.maxCpuThrottle.toFixed(1)}%` : 'n/a'} tone={summary.maxCpuThrottle ? 'warning' : 'neutral'} />
+        <MetricTile icon={<HardDrive />} label="Disk write" hint="Peak filesystem write throughput across all pods. Includes all disk I/O, not just PVC." value={summary.hasPvcData ? `${summary.maxPvcWrite.toFixed(1)} KiB/s` : 'n/a'} tone={summary.maxPvcWrite ? 'danger' : 'neutral'} />
       </section>
+
+      <CollectorCoverage status={collectorStatus} metrics={snapshot.metrics} />
 
       <section className="main-grid">
         <div className="panel topology-panel">
@@ -190,19 +282,21 @@ function App() {
   );
 }
 
-function MetricTile({ icon, label, value, tone }) {
+function MetricTile({ icon, label, value, tone, hint }) {
   return (
-    <article className={`metric-tile ${tone}`}>
-      <div className="tile-icon">{React.cloneElement(icon, { size: 20 })}</div>
+    <div className={`metric-tile ${tone}`}>
+      <div className="tile-icon">{icon}</div>
       <div>
-        <p>{label}</p>
+        <p>{label}{hint ? <TileInfo text={hint} /> : null}</p>
         <strong>{value}</strong>
       </div>
-    </article>
+    </div>
   );
 }
-
 function NodeDetails({ metric, onClear }) {
+  const owner = metric.owner_kind && metric.owner_name ? `${metric.owner_kind}/${metric.owner_name}` : 'unknown';
+  const pvcMounts = metric.pvc_mounts?.length ? metric.pvc_mounts.join(', ') : metric.pvc_name ?? 'none';
+
   return (
     <div className="node-details">
       <div className="details-header">
@@ -220,6 +314,18 @@ function NodeDetails({ metric, onClear }) {
           <span>Namespace</span>
           <strong>{metric.namespace}</strong>
         </div>
+        <div className="detail-row">
+          <span>Owner</span>
+          <strong>{owner}</strong>
+        </div>
+        <div className="detail-row">
+          <span>Node</span>
+          <strong>{metric.node_name ?? 'unknown'}</strong>
+        </div>
+        <div className="detail-row">
+          <span>PVC mounts</span>
+          <strong>{pvcMounts}</strong>
+        </div>
         <hr />
         <div className="detail-stat">
           <p>CPU Utilization</p>
@@ -233,7 +339,66 @@ function NodeDetails({ metric, onClear }) {
           <p>Error Rate</p>
           <div className="error-pill">{metric.error_rate_per_minute} errors/min</div>
         </div>
+        <div className="detail-stat">
+          <p>Restart State</p>
+          <div className="restart-stack">
+            <span>{metric.restart_count ?? 0} restarts</span>
+            {metric.waiting_reason ? <span>{metric.waiting_reason}</span> : null}
+            {metric.last_termination_reason ? <span>{metric.last_termination_reason}</span> : null}
+            {metric.oom_killed ? <span>OOMKilled</span> : null}
+          </div>
+        </div>
+        <LogSignatures signatures={metric.error_signatures ?? []} />
       </div>
+    </div>
+  );
+}
+
+function CollectorCoverage({ status, metrics }) {
+  const kubernetesPods = metrics.filter(metric => metric.owner_kind || metric.node_name || metric.pvc_mounts?.length).length;
+  const throttlingPods = metrics.filter(metric => metric.cpu_throttled_percent != null).length;
+  const pvcPods = metrics.filter(metric => metric.pvc_read_kbps != null || metric.pvc_write_kbps != null).length;
+  const logPods = metrics.filter(metric => metric.error_signatures?.length).length;
+  const kubeStatus = status?.live_collector_status?.kubernetes;
+  const optionalErrors = status?.live_collector_status?.optional_errors ?? [];
+
+  return (
+    <section className="coverage-strip" aria-label="Collector coverage">
+      <CoverageItem icon={<Network />} label="Kubernetes API" hint="Enriches pods with owner, node, restart, and PVC metadata from the Kubernetes API." value={kubeStatus?.available ? `${kubernetesPods} pods enriched` : 'unavailable'} tone={kubeStatus?.available ? 'ok' : 'warn'} />
+      <CoverageItem icon={<Gauge />} label="Prometheus extras" hint="Additional metrics like CPU throttling and filesystem I/O from Prometheus queries." value={`${throttlingPods} throttle / ${pvcPods} PVC pods`} tone="ok" />
+      <CoverageItem icon={<Terminal />} label="Loki patterns" hint="Error log patterns extracted from Loki. Pods with signatures have recent error logs." value={`${logPods} pods with signatures`} tone={logPods ? 'warn' : 'ok'} />
+      <CoverageItem icon={<AlertTriangle />} label="Optional query errors" hint="Count of non-critical Prometheus queries that returned errors or empty results." value={optionalErrors.length} tone={optionalErrors.length ? 'warn' : 'ok'} />
+    </section>
+  );
+}
+
+function CoverageItem({ icon, label, value, tone, hint }) {
+  return (
+    <div className={`coverage-item ${tone}`}>
+      {React.cloneElement(icon, { size: 17 })}
+      <div>
+        <span>{label}{hint ? <TileInfo text={hint} /> : null}</span>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
+function LogSignatures({ signatures }) {
+  if (!signatures.length) {
+    return null;
+  }
+
+  return (
+    <div className="log-signatures">
+      <p>Top log signatures</p>
+      {signatures.slice(0, 3).map(signature => (
+        <article key={signature.signature}>
+          <strong>{signature.count}x</strong>
+          <span>{signature.signature}</span>
+          <small>{formatTime(signature.first_seen)} - {formatTime(signature.last_seen)}</small>
+        </article>
+      ))}
     </div>
   );
 }
@@ -399,11 +564,18 @@ function ResourceTable({ metrics }) {
             <th>Namespace</th>
             <th>Pod</th>
             <th>Service</th>
+            <th>Owner</th>
+            <th>Node</th>
             <th>CPU</th>
+            <th>Throttle</th>
             <th>Memory</th>
             <th>Network</th>
+            <th>Drops/s</th>
             <th>PVC</th>
+            <th>PVC I/O</th>
+            <th>Restarts</th>
             <th>Errors/min</th>
+            <th>Top log signature</th>
           </tr>
         </thead>
         <tbody>
@@ -412,11 +584,18 @@ function ResourceTable({ metrics }) {
               <td>{metric.namespace}</td>
               <td>{metric.pod}</td>
               <td>{metric.service}</td>
+              <td>{metric.owner_kind && metric.owner_name ? `${metric.owner_kind}/${metric.owner_name}` : 'unknown'}</td>
+              <td>{metric.node_name ?? 'unknown'}</td>
               <td><Bar value={metric.cpu_millicores / metric.cpu_limit_millicores} label={`${metric.cpu_millicores.toFixed(1)}m`} /></td>
+              <td>{formatOptional(metric.cpu_throttled_percent, '%')}</td>
               <td><Bar value={metric.memory_mb / metric.memory_limit_mb} label={`${metric.memory_mb.toFixed(1)} MB`} /></td>
               <td>{(metric.network_rx_kbps + metric.network_tx_kbps).toFixed(1)} kbps</td>
-              <td>{metric.pvc_name ? `${metric.pvc_name} (${metric.pvc_latency_ms.toFixed(1)} ms)` : 'none'}</td>
+              <td>{formatDrops(metric)}</td>
+              <td>{metric.pvc_name ? `${metric.pvc_name} (${formatOptional(metric.pvc_latency_ms, ' ms')})` : 'none'}</td>
+              <td>{formatPvcIo(metric)}</td>
+              <td>{formatRestart(metric)}</td>
               <td>{metric.error_rate_per_minute}</td>
+              <td className="signature-cell">{metric.error_signatures?.[0]?.signature ?? 'none'}</td>
             </tr>
           ))}
         </tbody>
@@ -438,7 +617,13 @@ function Bar({ value, label }) {
 function buildSummary(snapshot) {
   const services = new Set(snapshot.metrics.map((metric) => metric.service)).size;
   const maxPvcLatency = Math.max(0, ...snapshot.metrics.map((metric) => metric.pvc_latency_ms ?? 0));
-  return { services, maxPvcLatency };
+  const restarts = snapshot.metrics.reduce((sum, metric) => sum + (metric.restart_count ?? 0), 0);
+  const logSignatures = snapshot.metrics.reduce((sum, metric) => sum + (metric.error_signatures?.length ?? 0), 0);
+  const hasThrottleData = snapshot.metrics.some((metric) => metric.cpu_throttled_percent != null);
+  const maxCpuThrottle = Math.max(0, ...snapshot.metrics.map((metric) => metric.cpu_throttled_percent ?? 0));
+  const hasPvcData = snapshot.metrics.some((metric) => metric.pvc_write_kbps != null);
+  const maxPvcWrite = Math.max(0, ...snapshot.metrics.map((metric) => metric.pvc_write_kbps ?? 0));
+  return { services, maxPvcLatency, restarts, logSignatures, hasThrottleData, maxCpuThrottle, hasPvcData, maxPvcWrite };
 }
 
 function sourceLabel(source) {
@@ -453,6 +638,28 @@ function formatTime(value) {
     minute: '2-digit',
     second: '2-digit'
   }).format(new Date(value));
+}
+
+function formatOptional(value, suffix = '') {
+  if (value == null) return 'n/a';
+  return `${Number(value).toFixed(1)}${suffix}`;
+}
+
+function formatDrops(metric) {
+  const rx = metric.network_rx_drops_per_second;
+  const tx = metric.network_tx_drops_per_second;
+  if (rx == null && tx == null) return 'n/a';
+  return `${((rx ?? 0) + (tx ?? 0)).toFixed(2)}`;
+}
+
+function formatPvcIo(metric) {
+  if (metric.pvc_read_kbps == null && metric.pvc_write_kbps == null) return 'n/a';
+  return `R ${formatOptional(metric.pvc_read_kbps)} / W ${formatOptional(metric.pvc_write_kbps)} KiB/s`;
+}
+
+function formatRestart(metric) {
+  const reasons = [metric.waiting_reason, metric.last_termination_reason, metric.oom_killed ? 'OOMKilled' : null].filter(Boolean);
+  return reasons.length ? `${metric.restart_count ?? 0} (${reasons.join(', ')})` : `${metric.restart_count ?? 0}`;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

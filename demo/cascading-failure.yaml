@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kovalent-cascade-frontend
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kovalent-cascade-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kovalent-cascade-frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kovalent-cascade-frontend
+        app: kovalent-cascade-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                wget -qO- --timeout=1 http://kovalent-cascade-api || echo "failed frontend request: api timeout"
+                sleep 2
+              done
+          resources:
+            requests:
+              cpu: 20m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kovalent-cascade-api
+  namespace: default
+spec:
+  selector:
+    app.kubernetes.io/name: kovalent-cascade-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kovalent-cascade-api
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kovalent-cascade-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kovalent-cascade-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kovalent-cascade-api
+        app: kovalent-cascade-api
+    spec:
+      containers:
+        - name: api
+          image: python:3.12-alpine
+          command:
+            - python
+            - -c
+            - |
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+              import urllib.request
+              class Handler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      try:
+                          urllib.request.urlopen("http://kovalent-cascade-db", timeout=1)
+                          self.send_response(200)
+                          self.end_headers()
+                          self.wfile.write(b"ok")
+                      except Exception as exc:
+                          print(f"error api dependency failed: {exc}", flush=True)
+                          self.send_response(503)
+                          self.end_headers()
+                          self.wfile.write(b"dependency failed")
+              HTTPServer(("", 8080), Handler).serve_forever()
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kovalent-cascade-db
+  namespace: default
+spec:
+  selector:
+    app.kubernetes.io/name: kovalent-cascade-db
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kovalent-cascade-db
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kovalent-cascade-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kovalent-cascade-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kovalent-cascade-db
+        app: kovalent-cascade-db
+    spec:
+      containers:
+        - name: db
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "panic: simulated database outage"
+              sleep 5
+              exit 1
+          resources:
+            requests:
+              cpu: 20m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi

@@ -8,6 +8,7 @@ from app.agents.log_io import LogIoAgent
 from app.agents.memory import MemoryAgent
 from app.agents.storage import StorageAgent
 from app.config import Settings, get_settings
+from app.collectors.kubernetes_collector import KubernetesCollectorConfig, KubernetesDiscoveryCollector
 from app.collectors.mock_collector import MockTelemetryCollector
 from app.collectors.prometheus_collector import CollectorConfig, PrometheusTelemetryCollector, TelemetryCollectionError
 from app.correlation import MasterCorrelationEngine
@@ -18,6 +19,14 @@ class InsightService:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
         self.demo_collector = MockTelemetryCollector()
+        self.kubernetes_collector = KubernetesDiscoveryCollector(
+            KubernetesCollectorConfig(
+                discovery_mode=self.settings.kubernetes_discovery_mode,
+                namespace_regex=self.settings.namespace_regex,
+                timeout_seconds=self.settings.request_timeout_seconds,
+                event_limit=self.settings.kubernetes_event_limit,
+            )
+        )
         self.live_collector = PrometheusTelemetryCollector(
             CollectorConfig(
                 prometheus_url=self.settings.prometheus_url,
@@ -25,7 +34,8 @@ class InsightService:
                 namespace_regex=self.settings.namespace_regex,
                 query_window=self.settings.query_window,
                 timeout_seconds=self.settings.request_timeout_seconds,
-            )
+            ),
+            kubernetes_collector=self.kubernetes_collector,
         )
         self.agents = [CpuAgent(), MemoryAgent(), StorageAgent(), LogIoAgent()]
         self.engine = MasterCorrelationEngine()
