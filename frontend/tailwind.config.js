@@ -7,23 +7,24 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#ffffff',
-        surface: '#f8fafc',
-        border: '#e2e8f0',
-        primary: '#FF003C', // Signature War Room Red
-        secondary: '#0f172a',
-        accent: '#FF003C',
-        danger: '#FF003C',
-        success: '#059669',
+        background: '#101010', // Midnight Void
+        surface: '#080808',    // Deep Space
+        border: '#333333',     // Dark Carbon
+        primary: '#E7C59A',    // Amber Glow
+        secondary: '#F3F3F3',  // Polar White
+        accent: '#E7C59A',
+        danger: '#E7C59A',
+        success: '#00AC5C',    // Neon Green
+        slate: '#C1C1C1',
+        ash: '#949494',
       },
       fontFamily: {
-        header: ['Inter Tight', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
-        inter: ['Inter', 'sans-serif'],
+        aeonik: ['Inter', 'sans-serif'],
+        input: ['IBM Plex Mono', 'monospace'],
+        mono: ['IBM Plex Mono', 'monospace'],
       },
       boxShadow: {
-        'red-glow': '0 0 15px rgba(255, 0, 60, 0.1)',
-        'red-ring': '0 0 0 1px rgba(255, 0, 60, 0.2)',
+        'amber-glow': '0 0 15px rgba(231, 197, 154, 0.15)',
       }
     },
   },

@@ -4,48 +4,36 @@
 
 @layer base {
   body {
-    @apply bg-white text-slate-900 font-inter antialiased select-none;
-    background-image: radial-gradient(#f1f5f9 1px, transparent 1px);
-    background-size: 30px 30px;
+    @apply bg-[#101010] text-[#F3F3F3] font-aeonik antialiased select-none;
   }
   
   h1, h2, h3, h4 {
-    @apply font-header uppercase tracking-tighter;
+    @apply font-aeonik tracking-tight;
   }
 }
 
-.war-card-light {
-  @apply bg-white border border-slate-200 rounded-none transition-all duration-300;
+.hyper-card {
+  @apply bg-[#080808] border border-[#333333] rounded-lg transition-all duration-300;
 }
 
-.war-card-light:hover {
-  @apply border-[#FF003C]/40 bg-slate-50 shadow-red-glow;
+.hyper-card:hover {
+  @apply border-[#E7C59A]/40 shadow-amber-glow;
 }
 
-.mono-data {
-  @apply font-mono text-[11px] tracking-tight;
+.input-data {
+  @apply font-input text-[13px] tracking-[-0.037em] leading-relaxed;
 }
 
-@keyframes pulse-red-light {
-  0% { opacity: 1; filter: drop-shadow(0 0 2px rgba(255, 0, 60, 0.4)); }
-  50% { opacity: 0.6; filter: drop-shadow(0 0 8px rgba(255, 0, 60, 0.1)); }
-  100% { opacity: 1; filter: drop-shadow(0 0 2px rgba(255, 0, 60, 0.4)); }
-}
-
-.animate-war-pulse-light {
-  animation: pulse-red-light 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Custom Scrollbar for Clinical Look */
+/* Custom Scrollbar for Hyperstudio */
 ::-webkit-scrollbar {
   width: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: white;
+  background: #101010;
 }
 ::-webkit-scrollbar-thumb {
-  background: #f1f5f9;
+  background: #333333;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #FF003C;
+  background: #E7C59A;
 }
