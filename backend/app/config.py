@@ -23,6 +23,16 @@ class Settings:
     kubernetes_discovery_mode: str = "auto"
     kubernetes_event_limit: int = 250
     dependencies_json: str | None = None
+    # M4 — Live Graph
+    redis_url: str = "redis://localhost:6379"
+    hubble_url: str | None = None
+    graph_rebuild_interval: int = 5
+    # M5 — Causal Engine
+    causal_retrain_interval: int = 60
+    causal_window_size: int = 60
+    causal_threshold: float = 0.15
+    # M6 — LLM
+    google_api_key: str | None = None
 
 
 def get_settings() -> Settings:
@@ -37,4 +47,12 @@ def get_settings() -> Settings:
         kubernetes_discovery_mode=os.getenv("KOVALENT_KUBERNETES_DISCOVERY_MODE", "auto").lower(),
         kubernetes_event_limit=int(os.getenv("KOVALENT_KUBERNETES_EVENT_LIMIT", "250")),
         dependencies_json=os.getenv("KOVALENT_DEPENDENCIES"),
+        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
+        hubble_url=os.getenv("HUBBLE_URL") or None,
+        graph_rebuild_interval=int(os.getenv("KOVALENT_GRAPH_REBUILD_INTERVAL", "5")),
+        causal_retrain_interval=int(os.getenv("KOVALENT_CAUSAL_RETRAIN_INTERVAL", "60")),
+        causal_window_size=int(os.getenv("KOVALENT_CAUSAL_WINDOW_SIZE", "60")),
+        causal_threshold=float(os.getenv("KOVALENT_CAUSAL_THRESHOLD", "0.15")),
+        google_api_key=os.getenv("GOOGLE_API_KEY") or None,
     )
+

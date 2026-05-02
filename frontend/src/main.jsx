@@ -427,10 +427,22 @@ function TopologyGraph({ topology, selectedId, onSelect }) {
     if (!graphData.nodes.length || !svgRef.current) return;
 
     const width = containerRef.current.clientWidth;
-    const height = 480;
+    const dense = graphData.nodes.length > 18;
+    const height = Math.min(760, Math.max(480, graphData.nodes.length * 24));
+    const radiusFor = (node) => {
+      if (node.kind === 'service') return dense ? 21 : 28;
+      if (node.kind === 'pvc') return dense ? 18 : 22;
+      return dense ? 16 : 22;
+    };
+    const labelOffsetFor = (node) => radiusFor(node) + (dense ? 17 : 20);
+    const shortLabel = (label) => {
+      if (!dense || label.length <= 22) return label;
+      return `${label.slice(0, 19)}...`;
+    };
     const svg = d3.select(svgRef.current)
       .attr('width', width)
-      .attr('height', height);
+      .attr('height', height)
+      .style('height', `${height}px`);
 
     svg.selectAll('*').remove();
 
@@ -455,12 +467,12 @@ function TopologyGraph({ topology, selectedId, onSelect }) {
     svg.call(zoom);
 
     const simulation = d3.forceSimulation(graphData.nodes)
-      .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(d => d.relationship === 'calls' ? 140 : 90))
-      .force('charge', d3.forceManyBody().strength(-400))
+      .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(d => d.relationship === 'calls' ? 180 : 112))
+      .force('charge', d3.forceManyBody().strength(dense ? -650 : -430))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('x', d3.forceX(width / 2).strength(0.05))
-      .force('y', d3.forceY(height / 2).strength(0.05))
-      .force('collision', d3.forceCollide().radius(50));
+      .force('x', d3.forceX(width / 2).strength(0.04))
+      .force('y', d3.forceY(height / 2).strength(0.04))
+      .force('collision', d3.forceCollide().radius(d => radiusFor(d) + (dense ? 34 : 38)));
 
     const link = g.append('g')
       .selectAll('line')
@@ -492,17 +504,20 @@ function TopologyGraph({ topology, selectedId, onSelect }) {
         }));
 
     node.append('circle')
-      .attr('r', d => d.kind === 'service' ? 28 : 22);
+      .attr('r', d => radiusFor(d));
 
     node.append('text')
       .attr('class', 'node-label')
-      .attr('y', d => d.kind === 'service' ? 48 : 42)
+      .attr('y', d => labelOffsetFor(d))
+      .text(d => shortLabel(d.label))
+      .append('title')
       .text(d => d.label);
 
     simulation.on('tick', () => {
       graphData.nodes.forEach(d => {
-        d.x = Math.max(40, Math.min(width - 40, d.x));
-        d.y = Math.max(40, Math.min(height - 40, d.y));
+        const padding = radiusFor(d) + (dense ? 36 : 42);
+        d.x = Math.max(padding, Math.min(width - padding, d.x));
+        d.y = Math.max(padding, Math.min(height - padding, d.y));
       });
 
       link

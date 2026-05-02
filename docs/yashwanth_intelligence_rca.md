@@ -191,3 +191,69 @@ backend/app/
 - Each incident has title, severity, root cause candidate, confidence, affected services, evidence, and recommendations.
 - RCA logic works on demo data without live Kubernetes.
 - Tests pass with `.venv/bin/python -m pytest -q`.
+## Completed RCA Service
+
+- **New service:** `rca_service.py` implements RCA analyses and exposes endpoints.
+- **New models in `models.py`:**
+  - `RootCauseScoreBreakdown`
+  - `RankedRootCauseCandidate`
+  - `LlmIncidentContext`
+  - `RcaAnalysis`
+- **API endpoints:**
+  - `GET /api/rca` – list all RCA analyses.
+  - `GET /api/rca/{incident_id}` – retrieve analysis for a specific incident (404 if not found).
+- **Features delivered:**
+  - Ranked root‑cause candidates per incident with detailed score breakdown (anomaly strength, dependency centrality, temporal precedence, blast radius, recurrence, final score).
+  - LLM‑ready incident context containing structured incident, ranked candidates, relevant dependency edges, evidence summary, guardrails, and expected output schema.
+- **Verification:**
+  - Backend tests: **11 passed**.
+  - Frontend build: **passed**.
+  - `git diff --check` clean.
+  - `/api/rca` works; non‑existent IDs return **404**.
+  - Live RCA result shows analyses with full score breakdown and LLM guardrails.
+
+_The intelligence layer is now fully functional, providing end‑to‑end RCA capabilities integrated with the existing incident framework._ 
+
+## Advanced Causal Intelligence (M4–M6)
+
+The Kovalent intelligence architecture has been extended with high-cadence live graphs, neural causal inference, and automated LLM synthesis.
+
+### M4 — Live Kubernetes Graph Builder
+- **Service:** `live_graph.py`
+- **Rebuild Cadence:** Every 5 seconds.
+- **Data Layers:**
+    - **Structural:** Pods, Services, PVCs, Namespaces (from K8s API).
+    - **Observed Flow:** Real-time eBPF network connections (via Hubble/Tetragon) with bytes/s and call frequency.
+    - **Metric Pressure:** Node weights influenced by CPU/Memory ratio and error rates.
+- **Storage:** Redis-backed timestamped adjacency matrices with in-memory ring-buffer fallback.
+- **API:**
+    - `GET /api/live-graph` – current NetworkX graph as node-link JSON.
+    - `GET /api/live-graph/neighbors/{pod_id}` – real-time adjacencies for agent use.
+
+### M5 — Neural Granger Causal Engine
+- **Service:** `causal_engine.py`
+- **Logic:**
+    - **Sliding Window:** 60-point history (5 minutes at 5s cadence) per KPI per pod.
+    - **cMLP (Primary):** Component-wise 2-layer MLP in PyTorch to detect non-linear Granger causality.
+    - **Linear OLS (Fallback):** Manual PageRank and linear Granger test when PyTorch is unavailable.
+- **Causal Graph:** Directed edges between KPIs where X predicts Y better than Y predicts itself (threshold: 0.15).
+- **Root Cause Chain:** Random walk with restart from any anomaly pod to find the most probable origin.
+- **API:**
+    - `GET /api/causal-graph` – current causal edges and strengths.
+    - `GET /api/causal-graph/root-cause/{pod_id}` – ranked root-cause chain.
+
+### M6 — Orchestrator + LLM Synthesis (Gemini)
+- **Service:** `orchestrator.py` & `llm_client.py`
+- **LLM Integration:** Google Gemini (2.0 Flash) with tool-gated system prompting. The LLM only sees structured evidence packets, never raw metrics.
+- **Evidence Packet:** Includes trigger pod, anomaly type, causal chain, agent findings, and dependency graph snapshot.
+- **Deliverables:**
+    - **Automated Reports:** Executive summary, root cause pod, confidence score, and propagation explanation.
+    - **Actionable Runbooks:** 3-step remediation guides tailored to the anomaly type (CPU, OOM, PVC, etc.).
+- **API:**
+    - `GET /api/orchestrator/report/{incident_id}` – full synthesized report.
+    - `GET /api/orchestrator/reports` – list of recently synthesized reports.
+
+### Final Verification
+- **Total Tests:** **29 passed** (including core RCA and advanced causal suites).
+- **Backend Stability:** Async background loops for graph rebuilding and causal retraining are active.
+- **Demo Mode:** Fully functional without Redis, PyTorch, or Google API keys (using deterministic fallbacks).

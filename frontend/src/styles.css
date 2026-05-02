@@ -260,7 +260,7 @@ h1 {
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   display: block;
-  height: 480px;
+  min-height: 480px;
   cursor: grab;
   width: 100%;
 }
@@ -408,12 +408,12 @@ h1 {
 
 .node text {
   fill: #26323d;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   paint-order: stroke;
   pointer-events: none;
   stroke: #ffffff;
-  stroke-width: 3px;
+  stroke-width: 3.5px;
   text-anchor: middle;
 }
 

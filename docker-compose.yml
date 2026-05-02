@@ -1,9 +1,19 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
   backend:
     build:
       context: ./backend
     ports:
       - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
   frontend:
     build:
       context: ./frontend
@@ -14,3 +24,5 @@ services:
     depends_on:
       - backend
 
+volumes:
+  redis-data:

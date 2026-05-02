@@ -7,6 +7,9 @@ from app.agents.cpu import CpuAgent
 from app.agents.log_io import LogIoAgent
 from app.agents.memory import MemoryAgent
 from app.agents.storage import StorageAgent
+from app.agents.network import NetworkAgent
+from app.agents.restart import RestartAgent
+from app.agents.baseline import BaselineAgent
 from app.config import Settings, get_settings
 from app.collectors.kubernetes_collector import KubernetesCollectorConfig, KubernetesDiscoveryCollector
 from app.collectors.mock_collector import MockTelemetryCollector
@@ -37,7 +40,15 @@ class InsightService:
             ),
             kubernetes_collector=self.kubernetes_collector,
         )
-        self.agents = [CpuAgent(), MemoryAgent(), StorageAgent(), LogIoAgent()]
+        self.agents = [
+            CpuAgent(), 
+            MemoryAgent(), 
+            StorageAgent(), 
+            LogIoAgent(),
+            NetworkAgent(),
+            RestartAgent(),
+            BaselineAgent(),
+        ]
         self.engine = MasterCorrelationEngine()
         self.engine.dependency_map = self._dependency_map()
 

@@ -14,7 +14,7 @@ class MockTelemetryCollector:
                 namespace="payments",
                 pod="checkout-api-7d9f",
                 service="checkout-api",
-                cpu_millicores=820 + random.uniform(-50, 50),
+                cpu_millicores=850 + random.uniform(-30, 30),
                 cpu_limit_millicores=1000,
                 memory_mb=610 + random.uniform(-10, 10),
                 memory_limit_mb=1024,
@@ -73,4 +73,3 @@ class MockTelemetryCollector:
                 observed_at=now,
             ),
         ]
-
