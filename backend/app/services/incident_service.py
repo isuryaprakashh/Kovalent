@@ -128,15 +128,19 @@ class IncidentService:
             "pvc_latency": 0.15,
             "memory_pressure": 0.12,
             "cpu_saturation": 0.1,
+            "pod_restarts": 0.12,
+            "network_saturation": 0.08,
             "application_errors": 0.08,
         }.get(finding.signal, 0.05)
         return min(1.0, severity_weight + pressure * 0.25 + signal_weight)
 
     def _signal_priority(self, signal: str) -> int:
         return {
+            "pod_restarts": 5,
             "pvc_latency": 4,
             "memory_pressure": 3,
             "cpu_saturation": 2,
+            "network_saturation": 2,
             "application_errors": 1,
         }.get(signal, 0)
 

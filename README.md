@@ -2,7 +2,7 @@
 
 > Transforming Kubernetes observability into intelligent decision-making.
 
-Kovalent is an AI-assisted Kubernetes pod intelligence dashboard. It reads real pod telemetry from Prometheus and Loki, runs deterministic resource agents, and produces root-cause insights with a React + D3 dashboard.
+Kovalent is an **Agentic AI Kubernetes Observability Platform**. It reads real pod telemetry from Prometheus and Loki, streams anomalies via Kafka (Redpanda), and uses a Google Gemini-powered orchestrator to automatically generate root-cause analyses and interactive remediation runbooks.
 
 The project supports two modes:
 
@@ -11,20 +11,14 @@ The project supports two modes:
 
 ## What Works Now
 
-- FastAPI backend.
-- React dashboard with D3 topology graph.
-- Live Prometheus collector for:
-  - pod CPU
-  - pod memory
-  - pod network RX/TX
-  - pod restarts
-  - PVC claims
-  - filesystem I/O signals when available
-- Live Loki collector for log-derived error rates.
-- CPU, memory, storage/PVC, and log/IO agents.
-- Master correlation engine for root-cause insights.
-- Runtime source indicator: `demo`, `live`, or `live-fallback`.
-- Unit tests for agents, correlation, and live collector mapping.
+- FastAPI backend & React/D3 frontend.
+- **Agentic Telemetry:** Live Prometheus/Loki collectors that stream raw resource data (CPU, memory, PVC, IO, network) to specialized analytical Python agents.
+- **Causal Intelligence:** Built-in **Granger Causality Engine** that automatically ranks root-cause candidates and visualizes propagation chains across the cluster topology.
+- **AI-Powered Chat:** Real-time conversational interface that uses **RAG (Retrieval-Augmented Generation)** to combine live cluster state with historical incident data for deep-dive analysis.
+- **LLM Orchestration:** Google Gemini 2.0/1.5 integration that synthesizes agent findings into high-level executive reports and automated CLI runbooks.
+- **RAG Memory:** A local vector database (NumPy + Gemini Embeddings) that historically validates incidents and provides context for AI chat.
+- **Dynamic Cluster Analytics:** Real-time aggregate telemetry (Aggregate CPU, Throughput, Anomaly Rate) derived from live data streams.
+- **Interactive Remediation:** Execute `kubectl` CLI runbooks directly from the UI to auto-resolve incidents.
 
 ## Project Structure
 
@@ -35,8 +29,13 @@ backend/
     collectors/
       mock_collector.py         Demo telemetry
       prometheus_collector.py   Live Prometheus/Loki collector
+      kafka_producer.py         Event streaming publisher
     services/
       insight_service.py        Snapshot orchestration
+      orchestrator.py           Central AI workflow engine
+      llm_client.py             Google Gemini AI integration
+      memory_service.py         Vector DB for RAG
+      live_graph.py             NetworkX dependency mapping
     config.py                   Environment configuration
     correlation.py              Root-cause correlation engine
     main.py                     FastAPI app and routes
@@ -492,14 +491,14 @@ GET /api/topology
 | `PROMETHEUS_URL` | `http://localhost:9090` | Prometheus HTTP API base URL. |
 | `LOKI_URL` | empty | Loki HTTP API base URL. |
 | `KOVALENT_NAMESPACE_REGEX` | `.+` | Namespace regex used in Prometheus/Loki queries. |
-| `KOVALENT_QUERY_WINDOW` | `5m` | Query range window for rate/count calculations. |
-| `KOVALENT_REQUEST_TIMEOUT_SECONDS` | `8` | HTTP timeout for telemetry queries. |
-| `KOVALENT_LIVE_FALLBACK` | `true` | If `true`, failed live collection returns demo data as `live-fallback`. Use `false` while testing real data. |
-| `KOVALENT_DEPENDENCIES` | empty | Optional JSON service dependency map. |
+| `KOVALENT_LIVE_FALLBACK` | `true` | If `true`, failed live collection returns demo data. |
+| `GOOGLE_API_KEY` | empty | Gemini API key for LLM orchestration and embeddings. |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL for fast report caching. |
+| `KAFKA_BOOTSTRAP_SERVERS`| `localhost:19092` | Redpanda broker for event streaming. |
 
 ## Docker Compose
 
-Docker Compose runs the Kovalent backend and frontend, but it does not install Prometheus, Loki, or Kubernetes.
+Docker Compose runs the Kovalent backend, frontend, Redis cache, and Redpanda Kafka broker.
 
 ```bash
 docker compose up --build
@@ -601,8 +600,8 @@ PVC latency depends on filesystem metrics being exposed with pod labels. CPU, me
 
 ## Current Limitations
 
-- Service-to-service dependencies are configured manually through `KOVALENT_DEPENDENCIES`.
+- Service-to-service dependencies currently rely primarily on explicit configuration or basic Kubernetes ownership (Pods -> PVCs). Deep eBPF-level dependency mapping is not yet implemented.
 - PVC latency is inferred from cAdvisor filesystem counters and depends on metric availability.
-- The correlation engine is deterministic and heuristic-based, not LLM-based.
+- Executing remediation commands requires the backend Docker container to have native `kubectl` access to the host cluster.
 - Grafana is not required or integrated into the Kovalent UI.
 

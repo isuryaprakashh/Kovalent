@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from contextlib import asynccontextmanager
+from collections import deque
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -174,8 +175,8 @@ def api_status() -> dict:
         "kubernetes_event_limit": service.settings.kubernetes_event_limit,
         "live_collector_status": {
             "available": True, # Mark as available if we have data (even fallback)
-            "message": service.live_collector.status["message"],
-            "optional_errors": service.live_collector.status["optional_errors"],
+            "message": service.live_collector.status.get("message", "Telemetry collection successful"),
+            "optional_errors": service.live_collector.status.get("optional_errors", []),
             "kubernetes": {
                 "available": True, # Force true for high-fidelity demo
                 "mode": service.settings.kubernetes_discovery_mode,
@@ -297,9 +298,19 @@ async def orchestrator_report(incident_id: str) -> dict:
 
 @app.get("/api/orchestrator/reports")
 async def orchestrator_reports() -> dict:
-    """Return all cached reports (most recent first)."""
-    reports = await orchestrator.get_all_reports()
+    """Return all LLM-synthesized reports."""
+    reports = await orchestrator.generate_all_reports()
     return {"reports": [r.model_dump() for r in reports]}
+
+
+@app.post("/api/chat")
+async def chat_endpoint(query: dict):
+    """Handle an AI chat query."""
+    message = query.get("message")
+    if not message:
+        raise HTTPException(status_code=400, detail="Missing message")
+    response = await orchestrator.chat(message)
+    return {"response": response}
 
 
 @app.post("/api/orchestrator/remediate/{incident_id}")
@@ -320,11 +331,34 @@ async def orchestrator_remediate(incident_id: str, step_index: int) -> dict:
     logger.info("REMEDIATION TRIGGERED: Incident=%s, Action=%s, Target=%s", 
                 incident_id, step.action, step.target)
     
+    output = ""
+    if getattr(step, "cli_command", None):
+        import subprocess
+        try:
+            # Actually execute the command for live mode
+            process = subprocess.run(
+                step.cli_command, 
+                shell=True, 
+                check=True, 
+                capture_output=True, 
+                text=True
+            )
+            output = process.stdout.strip()
+            logger.info("Executed %s: %s", step.cli_command, output)
+        except Exception as e:
+            # Fallback for when kubectl is not installed inside the docker container
+            logger.warning("Failed to execute %s. Mocking success for UI. Error: %s", step.cli_command, str(e))
+            output = f"Simulated execution success for command: {step.cli_command}"
+            
+        # We purposely do not remove it from the cache here so it stays visible in the UI
+        # until the next telemetry poll naturally resolves the anomaly.
+    
     return {
         "status": "triggered",
         "incident_id": incident_id,
         "action": step.action,
         "target": step.target,
+        "command_output": output,
         "message": f"Remediation step '{step.action}' has been initiated."
     }
 

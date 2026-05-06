@@ -31,6 +31,13 @@ class MasterCorrelationEngine:
                 insights.append(self._application_errors(service, service_findings))
             elif "cpu_saturation" in signals:
                 insights.append(self._cpu_saturation(service, service_findings))
+            elif "pod_restarts" in signals:
+                insights.append(self._pod_restarts(service, service_findings))
+            elif "network_saturation" in signals:
+                insights.append(self._network_saturation(service, service_findings))
+            elif signals - {"baseline_deviation_cpu"}:
+                # Catch-all for any other anomaly signals not explicitly handled above
+                insights.append(self._generic_anomaly(service, service_findings))
 
         frontend_errors = by_service.get("frontend", [])
         db_storage = by_service.get("orders-db", [])
@@ -79,6 +86,42 @@ class MasterCorrelationEngine:
             root_cause=f"{service} is using a high share of its CPU limit.",
             correlation="CPU usage exceeded the configured saturation threshold.",
             recommendation="Check request volume, throttling, and limit sizing for the workload.",
+            affected_services=self._affected_services(service),
+            evidence=evidence,
+        )
+
+    def _pod_restarts(self, service: str, evidence: list[AgentFinding]) -> Insight:
+        restart_findings = [f for f in evidence if f.signal == "pod_restarts"]
+        max_restarts = max((f.value for f in restart_findings), default=0)
+        return Insight(
+            status=self._max_status(evidence),
+            event="Pod Restart Loop",
+            root_cause=f"{service} pods have restarted {int(max_restarts)} times, indicating crash-loop or OOM kills.",
+            correlation="Restart count exceeded zero, suggesting instability in the workload lifecycle.",
+            recommendation="Check pod events, OOMKilled status, liveness probes, and recent deployments.",
+            affected_services=self._affected_services(service),
+            evidence=evidence,
+        )
+
+    def _network_saturation(self, service: str, evidence: list[AgentFinding]) -> Insight:
+        return Insight(
+            status=self._max_status(evidence),
+            event="Network Throughput Saturation",
+            root_cause=f"{service} is experiencing abnormally high network throughput.",
+            correlation="Combined RX/TX bandwidth exceeded the saturation threshold.",
+            recommendation="Investigate top-talker connections, network policies, and consider horizontal scaling.",
+            affected_services=self._affected_services(service),
+            evidence=evidence,
+        )
+
+    def _generic_anomaly(self, service: str, evidence: list[AgentFinding]) -> Insight:
+        signals = {f.signal for f in evidence}
+        return Insight(
+            status=self._max_status(evidence),
+            event=f"Anomaly Detected ({', '.join(sorted(signals))})",
+            root_cause=f"{service} has triggered anomaly signals: {', '.join(sorted(signals))}.",
+            correlation="One or more specialist agents flagged this workload for review.",
+            recommendation="Inspect the affected workload logs, resource usage, and recent changes.",
             affected_services=self._affected_services(service),
             evidence=evidence,
         )

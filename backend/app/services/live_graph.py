@@ -202,11 +202,11 @@ class LiveGraphBuilder:
 
     def to_json(self) -> dict[str, Any]:
         """Serialize the current graph to JSON-compatible dict (node-link format)."""
-        return json_graph.node_link_data(self._graph)
+        return json_graph.node_link_data(self._graph, edges="edges")
 
     def _store_snapshot(self, g: nx.DiGraph) -> None:
         now = datetime.now(timezone.utc)
-        data = json_graph.node_link_data(g)
+        data = json_graph.node_link_data(g, edges="edges")
         snap = GraphSnapshot(timestamp=now, node_link_data=data)
 
         # Redis

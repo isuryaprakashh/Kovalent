@@ -285,6 +285,7 @@ class EvidencePacket(BaseModel):
     causal_chain: list[RootCauseChainEntry]
     agent_findings: list[AgentFinding]
     graph_snapshot: dict[str, Any]
+    historical_context: list[str] = Field(default_factory=list)
 
 
 class RunbookStep(BaseModel):
@@ -293,6 +294,7 @@ class RunbookStep(BaseModel):
     action: str
     target: str
     rationale: str
+    cli_command: str | None = None
 
 
 class OrchestratorReport(BaseModel):
@@ -305,4 +307,7 @@ class OrchestratorReport(BaseModel):
     propagation_path: list[str]
     recommendations: list[Recommendation]
     runbook: list[RunbookStep]
+    causal_chain: list[RootCauseChainEntry] = Field(default_factory=list)
+    historical_context: list[str] = Field(default_factory=list)
+    is_historically_validated: bool = False
     generated_at: datetime

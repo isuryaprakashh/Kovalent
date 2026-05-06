@@ -2,6 +2,7 @@ fastapi
 uvicorn
 pydantic
 requests
+httpx
 python-dotenv
 networkx==3.4.2
 numpy>=1.26.0,<3

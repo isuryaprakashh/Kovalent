@@ -39,9 +39,9 @@ class TelemetryProducer:
         except Exception as e:
             logger.error("Failed to produce to Kafka: %s", e)
 
-    def flush(self):
+    def flush(self, timeout=1.0):
         if self.enabled:
-            self.producer.flush()
+            self.producer.flush(timeout)
 
     def _delivery_report(self, err, msg):
         if err is not None:

@@ -10,6 +10,8 @@ services:
     command:
       - redpanda start
       - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
       - --overprovisioned
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
@@ -23,6 +25,8 @@ services:
       context: ./backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
       REDIS_URL: redis://redis:6379
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092

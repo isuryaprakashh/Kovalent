@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any
@@ -20,6 +21,7 @@ from app.services.incident_service import IncidentService
 from app.services.kpi_buffer import KpiBuffer
 from app.services.live_graph import LiveGraphBuilder
 from app.services.llm_client import LlmClient, build_report
+from app.services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,7 @@ class Orchestrator:
         self.kpi_buffer = kpi_buffer
         self.llm_client = LlmClient(api_key=settings.google_api_key)
         self._report_cache: deque[OrchestratorReport] = deque(maxlen=50)
+        self.memory_service = MemoryService(api_key=settings.google_api_key)
         self._redis: Any | None = None
         self._init_redis()
         
@@ -79,16 +82,51 @@ class Orchestrator:
             if report.incident_id == incident_id:
                 return report
 
+        # Check Redis
+        if self._redis:
+            try:
+                cached_data = self._redis.get(f"kovalent:report:{incident_id}")
+                if cached_data:
+                    import json
+                    data = json.loads(cached_data)
+                    report = OrchestratorReport(**data)
+                    self._report_cache.append(report)
+                    logger.info("Orchestrator: Loaded report %s from Redis cache (LLM bypassed)", incident_id)
+                    return report
+            except Exception as e:
+                logger.warning("Redis cache read failed: %s", e)
+
+        # No cache or Redis — build from scratch with LLM
+        logger.info("Orchestrator: generating new LLM report for incident %s", incident_id)
         incident = await self.incident_service.get_incident(incident_id)
         if incident is None:
+            logger.warning("Orchestrator: incident %s no longer exists, skipping report.", incident_id)
             return None
 
         evidence_packet = self._assemble_evidence(incident)
-        llm_response = await self.llm_client.analyze(evidence_packet)
-        report = build_report(incident_id, llm_response, incident.root_cause.kind)
+        try:
+            llm_response = await self.llm_client.analyze(evidence_packet)
+            is_validated = len(evidence_packet.historical_context) > 0
+            # FIX: pass kind as anomaly_type, not service
+            report = build_report(
+                incident_id, 
+                llm_response, 
+                incident.root_cause.kind, 
+                is_historically_validated=is_validated,
+                causal_chain=evidence_packet.causal_chain,
+                historical_context=evidence_packet.historical_context
+            )
 
-        # Cache in memory
-        self._report_cache.append(report)
+            # RAG: Save incident to memory
+            self.memory_service.add_incident(report)
+
+            # Cache in memory
+            self._report_cache.append(report)
+            logger.info("Orchestrator: successfully generated report for %s", incident_id)
+            return report
+        except Exception as e:
+            logger.error("Orchestrator: failed to generate report for %s: %s", incident_id, str(e))
+            return None
 
         # Cache in Redis
         if self._redis:
@@ -110,13 +148,42 @@ class Orchestrator:
 
     async def generate_all_reports(self) -> list[OrchestratorReport]:
         """Generate reports for all current incidents."""
+        logger.info("Orchestrator: generating reports for all current incidents...")
         incidents = await self.incident_service.build_incidents()
-        reports: list[OrchestratorReport] = []
-        for incident in incidents:
-            report = await self.generate_report(incident.id)
-            if report:
-                reports.append(report)
-        return reports
+        logger.info("Orchestrator: found %d current incidents.", len(incidents))
+        
+        # Parallelize report generation to avoid browser timeouts
+        tasks = [self.generate_report(incident.id) for incident in incidents]
+        reports = await asyncio.gather(*tasks)
+        
+        # Filter out failed/None reports
+        final_reports = [r for r in reports if r is not None]
+        logger.info("Orchestrator: successfully generated %d reports.", len(final_reports))
+        return final_reports
+
+    async def chat(self, user_message: str) -> str:
+        """Handle a chat query from the user using LLM + RAG."""
+        logger.info("Orchestrator: processing chat query: %s", user_message)
+        
+        # 1. Get current cluster state
+        incidents = await self.incident_service.build_incidents()
+        
+        # 2. RAG: Search for historical context relevant to the user query
+        historical = self.memory_service.search_similar(user_message)
+        
+        # 3. Build context string
+        context = f"Current Incidents: {len(incidents)}\n"
+        for inc in incidents[:5]:
+            context += f"- {inc.title}: {inc.summary} (Status: {inc.status})\n"
+        
+        if historical:
+            context += "\nRelevant Historical Context from RAG Memory:\n"
+            for h in historical[:3]:
+                context += f"- {h}\n"
+                
+        # 4. Call LLM
+        response = await self.llm_client.chat(user_message, context)
+        return response
 
     def ingest_snapshot(self, snapshot: ClusterSnapshot) -> None:
         """Feed the latest snapshot into the KPI buffer for causal analysis."""
@@ -157,6 +224,10 @@ class Orchestrator:
         # Get graph snapshot
         graph_data = self.live_graph.to_json()
 
+        # RAG Memory Search
+        query = f"Anomaly: {anomaly_type} on {trigger_pod}. Evidence: " + " ".join([f.message for f in agent_findings[:3]])
+        historical_context = self.memory_service.search_similar(query)
+
         return EvidencePacket(
             trigger_pod=trigger_pod,
             anomaly_type=anomaly_type,
@@ -164,6 +235,7 @@ class Orchestrator:
             causal_chain=causal_chain,
             agent_findings=agent_findings,
             graph_snapshot=graph_data,
+            historical_context=historical_context,
         )
 
     def get_causal_edges(self) -> list[CausalEdge]:
